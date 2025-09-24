@@ -156,6 +156,12 @@
             <div><label>Topic</label><input id="topic" value="m5/+/telemetry"/></div>
             <div><label>Client ID (auto)</label><input id="cid" readonly/></div>
             <div><label>Auto-connect after unlock</label><input id="autoconn" type="checkbox" checked/></div>
+            <div><label>Pub User (optional)</label><input id="pubUser" value="wildsailor"/></div>
+            <div><label>Pub Pass</label><input id="pubPass" type="password" value="Sailorinthewild1"/></div>
+            <div style="grid-column:1/-1;display:flex;align-items:center;gap:8px;">
+              <input type="checkbox" id="usePubClient" checked/>
+              <label for="usePubClient" style="margin:0;">Use separate publisher client for start/end</label>
+            </div>
           </div>
           <div class="small">
             Status: <span id="status" class="bad">disconnected</span><br/>
@@ -341,6 +347,7 @@ function applyChartDefaults() {
 
 // ---------- state ----------
 let client=null, unlocked=false, viewer={user:null,pass:null};
+let pubClient=null; // optional separate publisher
 let chartTS=null, chartSOG=null;
 let map=null, mapInited=false, firstMapFixDone=false;
 let globalT0=null;
@@ -837,7 +844,62 @@ if (unlockBtn) {
 
 // ---------- Recording & Reports ----------
 const btnRecord=$('btnRecord'), recInfo=$('recInfo');
-btnRecord.addEventListener('click',()=>{ if(!recActive){ startRec(); } else { stopRec(); } });
+
+function publishRecordingEvent(event){
+  try{
+    const useSep = document.getElementById('usePubClient')?.checked;
+    const host=document.getElementById('host').value.trim(), port=document.getElementById('port').value.trim(), path=document.getElementById('path').value.trim()||'/mqtt';
+    const url=`wss://${host}:${port}${path}`;
+
+    // Ensure we have a connected publisher
+    let c = client;
+    if(useSep){
+      const ensurePubConnected = () => {
+        if(pubClient && pubClient.connected) return Promise.resolve();
+        return new Promise((resolve, reject)=>{
+          const cidPub = `pub-`+(document.getElementById('cid').value || Math.random().toString(16).slice(2,10));
+          const user=document.getElementById('pubUser').value||viewer.user;
+          const pass=document.getElementById('pubPass').value||viewer.pass;
+          try{
+            pubClient = mqtt.connect(url,{protocolVersion:4,clean:true,clientId:cidPub,username:user,password:pass,keepalive:20,reconnectPeriod:0});
+          }catch(e){ log('pub client connect error: '+(e?.message||e)); return reject(e); }
+          pubClient.once('connect',()=>{ log('publisher connected'); resolve(); });
+          pubClient.once('error',e=>{ log('publisher error: '+(e?.message||e)); reject(e); });
+          pubClient.on('close',()=>{ log('publisher closed'); });
+        });
+      };
+
+      const proceed = async ()=>{
+        try{ await ensurePubConnected(); }catch{ return; }
+        const cid = document.getElementById('cid').value || 'web-'+Math.random().toString(16).slice(2,10);
+        const topic = (event==='start') ? 'recording/start' : 'recording/end';
+        const payload = { event, ts_ms: Date.now(), source: cid, unit_id: cid };
+        pubClient.publish(topic, JSON.stringify(payload), {qos:0, retain:false});
+        log(`published ${event} -> ${topic}`);
+      };
+      proceed();
+      return; // don't use main client path
+    }
+
+    if(!c || !c.connected){ log('Cannot publish recording '+event+': not connected'); return; }
+
+    const cid = document.getElementById('cid').value || 'web-'+Math.random().toString(16).slice(2,10);
+    const topic = (event==='start') ? 'recording/start' : 'recording/end';
+    const payload = { event, ts_ms: Date.now(), source: cid, unit_id: cid };
+    c.publish(topic, JSON.stringify(payload), {qos:0, retain:false});
+    log(`published ${event} -> ${topic}`);
+  }catch(e){ log('publish recording event error: '+(e?.message||e)); }
+}
+
+btnRecord.addEventListener('click',()=>{
+  if(!recActive){
+    startRec();
+    publishRecordingEvent('start');
+  } else {
+    stopRec();
+    publishRecordingEvent('end');
+  }
+});
 
 // Store all recordings in session and persist to localStorage until deleted
 let allRecordings = [];
