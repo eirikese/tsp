@@ -1,0 +1,1284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>TrollSports Live v1.5.9</title>
+<meta name="theme-color" content="#ffffff"/>
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+<link rel="stylesheet" href="style.css"/>
+<script src="https://cdn.jsdelivr.net/npm/mqtt/dist/mqtt.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="utilities.js"></script>
+<script src="live_helpers.js"></script>
+<script src="plot_helpers.js"></script>
+<script src="kde_helpers.js"></script>
+<script src="stay_awake.js" type="module"></script>
+<script src="unit_config.js"></script>
+<script src="position_helpers.js"></script>
+<script src="recording_helpers.js"></script>
+<script src="reports_helpers.js"></script>
+<script src="wind.js"></script>
+
+<script>
+  // Register and enable the annotation plugin globally
+  Chart.register(window['chartjs-plugin-annotation']);
+</script>
+
+</head>
+<body>
+  <div class="topbar">
+    <div class="app-title">TrollSports Live</div><div class="spacer"></div>
+    <div class="ver">v1.5.9</div>
+    <div class="tabs hidden" id="maintabs">
+      <button class="tabbtn active" data-tab="plot">Home</button>
+      <button class="tabbtn" data-tab="angles">Angles</button>
+      <button class="tabbtn" data-tab="map">Map</button>
+      <button class="tabbtn" data-tab="reports">Reports</button>
+      <button class="tabbtn" data-tab="settings">Settings</button>
+    </div>
+  <button id="btnRecord" class="hidden" style="margin-left:16px;">Start Recording</button>
+  <div id="recInfo" class="small" style="margin-left:16px;margin-top:4px;"></div>
+  </div>
+
+  <!-- Gate -->
+  <div id="gate" class="wrap">
+    <div class="card half">
+      <div style="font-weight:700;margin-bottom:8px;">Protected dashboard</div>
+      <div class="small">Enter site password to unlock. Viewer creds are decrypted in-browser (read-only).</div>
+      <label>Site password</label><input id="pw" type="password" placeholder="Enter password"/>
+      <div class="btns"><button id="btnUnlock">Unlock</button></div>
+      <div id="unlockMsg" class="small"></div>
+    </div>
+  </div>
+
+  <!-- App -->
+  <div id="app" class="wrap hidden">
+  <!-- PLOT TAB (Home) -->
+    <section id="tab-plot">
+      <div class="row">
+        <div class="card half" id="nowPanel">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <span style="font-weight:700;">Now</span>
+            <div style="display:flex;gap:8px;">
+              <button id="btnToggleLivePlot" class="small">Pause Live Plotting</button>
+              <button id="btnStayAwake" class="small">Stay Awake</button>
+            </div>
+          </div>
+          <div id="nowUnits" class="grid" style="margin-top:10px;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:12px"></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="card half">
+          <div style="font-weight:700;margin-bottom:8px;">Heel Timeseries</div>
+          <div class="plot" style="height:40vh;min-height:260px;"><canvas id="chart_ts"></canvas></div>
+        </div>
+        <div class="card half">
+          <div style="font-weight:700;margin-bottom:8px;">SOG Timeseries</div>
+          <div class="plot" style="height:40vh;min-height:260px;"><canvas id="chart_sog"></canvas></div>
+          <div class="small" id="sogInfo"></div>
+        </div>
+      </div>
+
+      <div class="row">
+          <div class="card half" style="display:none;"> <!-- HIDDEN -->
+            <div class="dens-head" style="font-weight:700;">Trim (°) — per athlete</div>
+            <div class="plot"><canvas id="dist-pitch"></canvas></div>
+          </div>
+      </div>
+      <div class="row">
+        <div class="card half" style="display:none;"> <!-- HIDDEN -->
+          <div class="dens-head" style="font-weight:700;">Frequency (Trim, Hz) — per athlete</div>
+          <div class="plot"><canvas id="dist-freq-pitch"></canvas></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ANGLES TAB -->
+    <section id="tab-angles" class="hidden">
+      <div class="row">
+        <div class="card half">
+          <div class="dens-head" style="font-weight:700;">Heel (°) — per athlete</div>
+          <div class="plot"><canvas id="dist-roll"></canvas></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="card half">
+          <div class="dens-head" style="font-weight:700;">Frequency (Heel, Hz) — per athlete</div>
+          <div class="plot"><canvas id="dist-freq-roll"></canvas></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MAP TAB -->
+    <section id="tab-map" class="hidden">
+      <div class="row">
+        <div class="card grow">
+          <div style="font-weight:700;margin-bottom:8px;">GNSS Map</div>
+          <div class="btns" style="margin-bottom:8px;">
+            <button id="btnTopMark">Add Top Mark</button>
+            <button id="btnStartLine">Add Start Line</button>
+            <button id="btnWindForecast">Wind Forecast</button>
+          </div>
+          <div id="map"></div>
+          <div class="small" id="mapCredit">Basemap © OpenStreetMap, © CARTO — Dark Matter</div>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- REPORTS TAB -->
+    <section id="tab-reports" class="hidden">
+      <div class="row">
+        <div class="card grow">
+          <div style="font-weight:700;margin-bottom:8px;">Reports</div>
+          <div id="reportsTabs" class="tabs" style="margin-bottom:12px;"></div>
+          <div id="reportsContent"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SETTINGS TAB -->
+    <section id="tab-settings" class="hidden">
+      <div class="row">
+        <!-- Connection -->
+        <div class="card half">
+          <div style="font-weight:700;margin-bottom:8px;">Connection</div>
+          <div class="grid">
+            <div><label>Host</label><input id="host" value="afe7881f82fe42929e4a5370cddc7285.s1.eu.hivemq.cloud"/></div>
+            <div><label>WS Port</label><input id="port" value="8884"/></div>
+            <div><label>Path</label><input id="path" value="/mqtt"/></div>
+            <div><label>Topic</label><input id="topic" value="m5/+/telemetry"/></div>
+            <div><label>Client ID (auto)</label><input id="cid" readonly/></div>
+            <div><label>Auto-connect after unlock</label><input id="autoconn" type="checkbox" checked/></div>
+          </div>
+          <div class="small">
+            Status: <span id="status" class="bad">disconnected</span><br/>
+            WSS: <span id="url" class="tiny mono" style="word-break:break-all;"></span>
+          </div>
+          <div class="btns">
+            <button id="btnConnect">Connect</button>
+            <button id="btnDisconnect">Disconnect</button>
+            <button id="btnClear">Clear Data</button>
+          </div>
+        </div>
+
+        <!-- AVG Line/Label Toggles -->
+        <div class="card half">
+          <div style="font-weight:700;margin-bottom:8px;">Distribution AVG Line/Label</div>
+          <div class="btns">
+            <label style="display:flex;align-items:center;gap:8px;">
+              <input type="checkbox" id="showAvgLine" checked>
+              Show AVG Line
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;">
+              <input type="checkbox" id="showAvgLabel">
+              Show AVG Label
+            </label>
+          </div>
+        </div>
+        <!-- Windows/Peaks/GNSS -->
+        <div class="card grow">
+          <div style="font-weight:700;margin-bottom:8px;">Windows, Peaks & GNSS</div>
+          <div class="grid">
+            <div style="grid-column:1/-1;">
+              <label>Timeseries View Window (seconds)</label>
+              <div class="range-row">
+                <input id="viewSecRange" type="range" min="5" max="600" step="5" value="30"/>
+                <input id="viewSec" type="number" min="5" max="600" step="5" value="30" style="width:90px"/>
+              </div>
+            </div>
+            <div style="grid-column:1/-1;">
+              <label>Analysis Window (seconds) — peak detection</label>
+              <div class="range-row">
+                <input id="winSecRange" type="range" min="5" max="600" step="5" value="30"/>
+                <input id="winSec" type="number" min="5" max="600" step="5" value="30" style="width:90px"/>
+              </div>
+            </div>
+            <div><label>Min peak distance (ms)</label><input id="minDist" value="300"/></div>
+            <div><label>Min prominence (deg)</label><input id="minProm" value="5.0"/></div>
+            <div style="grid-column:1/-1;">
+              <label>Velocity smoothing window (seconds)</label>
+              <div class="range-row">
+                <input id="sogWinRange" type="range" min="3" max="30" step="1" value="8"/>
+                <input id="sogWin" type="number" min="3" max="30" step="1" value="8" style="width:90px"/>
+              </div>
+              <div class="tiny">Speed is computed from a linear fit of XY position over this window (1 Hz GNSS-friendly).</div>
+            </div>
+
+            <!-- KDE smoothing controls -->
+            <div style="grid-column:1/-1;">
+              <label>Distribution smoothing — Heel/Trim (× bandwidth)</label>
+              <div class="range-row">
+                <input id="kdeFactorAngRange" type="range" min="0.1" max="1" step="0.1" value="0.3"/>
+                <input id="kdeFactorAng" type="number" min="0.1" max="1" step="0.1" value="0.3" style="width:90px"/>
+              </div>
+            </div>
+            <div style="grid-column:1/-1;">
+              <label>Distribution smoothing — Frequency (× bandwidth)</label>
+              <div class="range-row">
+                <input id="kdeFactorFreqRange" type="range" min="0.1" max="1" step="0.1" value="0.3"/>
+                <input id="kdeFactorFreq" type="number" min="0.1" max="1" step="0.1" value="0.3" style="width:90px"/>
+              </div>
+            </div>
+            <!-- END -->
+          </div>
+        </div>
+
+        <!-- Velocity Filter (GNSS) -->
+        <div class="card half">
+          <div style="font-weight:700;margin-bottom:8px;">Velocity Filter (GNSS)</div>
+          <div class="grid">
+            <div style="grid-column:1/-1;display:flex;align-items:center;gap:10px;">
+              <label style="margin:0;display:flex;align-items:center;gap:8px;">
+                <input type="checkbox" id="velFilterEnabled"> Enable velocity filter
+              </label>
+              <label style="margin:0;display:flex;align-items:center;gap:8px;">
+                Mode
+                <select id="velFilterMode">
+                  <option value="reject">Reject spikes</option>
+                  <option value="cap">Cap to max</option>
+                </select>
+              </label>
+            </div>
+            <div><label>Max speed (kt)</label><input id="velFilterMaxSpeedKnots" type="number" min="1" max="300" step="1" value="30"/></div>
+            <div><label>Min dt (s)</label><input id="velFilterMinDtS" type="number" min="0.01" max="5" step="0.01" value="0.05"/></div>
+            <div><label>Max dt (s)</label><input id="velFilterMaxDtS" type="number" min="1" max="600" step="1" value="40"/></div>
+          </div>
+          <div class="btns" style="margin-top:12px;">
+            <button id="velFilterSave">Save Velocity Filter</button>
+          </div>
+          <div id="velFilterStatus" class="small" style="margin-top:8px;"></div>
+          <div class="tiny" style="margin-top:6px;">Applies to Live and Reports. Bearing convention: 0°=North, 90°=East.</div>
+        </div>
+
+        <!-- Units Configuration -->
+        <div class="card half">
+          <div style="font-weight:700;margin-bottom:8px;">Athlete Configuration</div>
+          <div id="unitsConfig" class="grid" style="grid-template-columns:1fr;gap:12px">
+            <!-- Dynamic content here -->
+          </div>
+          <div class="btns" style="margin-top:12px;">
+            <button id="saveUnitConfig">Save Configuration</button>
+          </div>
+          <div id="configStatus" class="small" style="margin-top:8px;"></div>
+        </div>
+
+        <!-- Units Visibility -->
+        <div class="card half">
+          <div style="font-weight:700;margin-bottom:8px;">Units Visibility</div>
+          <div id="unitsList" class="grid" style="grid-template-columns:1fr;gap:8px"></div>
+        </div>
+
+
+        <!-- Race Setup (moved here) -->
+        <div class="card grow">
+          <div style="font-weight:700;margin-bottom:8px;">Race Setup</div>
+          <div class="btns">
+            <button id="btnTopMark">Add Top Mark</button>
+            <button id="btnStartLine">Add Start Line</button>
+          </div>
+          <div class="small" id="topMarkInfo" style="margin-top:6px;">No top mark set.</div>
+          <div class="small" id="startLineInfo">No start line set.</div>
+          <div class="tiny" style="margin-top:6px;">Tip: After clicking a button, you’ll be taken to the Map; click the point(s) to place. First start-line point appears immediately.</div>
+        </div>
+
+        <!-- Logs -->
+        <div class="card grow"><div style="font-weight:700;margin-bottom:8px;">Logs</div><pre class="log" id="log"></pre></div>
+      </div>
+    </section>
+  </div>
+
+<script>
+
+const APP_VERSION="v1.5.9";
+const ENCRYPTED_CREDS="eyJzYWx0IjoiYU01amVaRG9rd0o5dmVDc1gwTjhoQT09IiwiaXYiOiJuTEdVM2NldmhSSGFVR2ZmIiwiY3QiOiIzeVZaUkxnRUNxaWxicU92QmExZlJkcVZUb1ZiM3NvZFArd2svK3FxTW9NZGRYZHV5V2gveTV3WmVxakZlZkV6L2ZpZjN6SEpqU3Z0TXd2OCJ9";
+const $=id=>document.getElementById(id);
+
+// color helpers
+function hexToRgb(h){h=h.replace('#',''); if(h.length===3){h=h.split('').map(c=>c+c).join('');} const n=parseInt(h,16); return {r:(n>>16)&255,g:(n>>8)&255,b:n&255};}
+function rgbToHex({r,g,b}){const f=v=>v.toString(16).padStart(2,'0'); return '#'+f(r)+f(g)+f(b);}
+function rgbToHsl({r,g,b}){r/=255;g/=255;b/=255;const max=Math.max(r,g,b),min=Math.min(r,g,b);let h,s,l=(max+min)/2;if(max===min){h=s=0;}else{const d=max-min;s=l>0.5?d/(2-max-min):d/(max+min);switch(max){case r:h=(g-b)/d+(g<b?6:0);break;case g:h=(b-r)/d+2;break;case b:h=(r-g)/d+4;break;}h/=6;}return {h,s,l};}
+function hslToRgb({h,s,l}){let r,g,b;if(s===0){r=g=b=l;}else{const hue2rgb=(p,q,t)=>{if(t<0)t+=1;if(t>1)t-=1;if(t<1/6)return p+(q-p)*6*t;if(t<1/2)return q;if(t<2/3)return p+(q-p)*(2/3-t)*6;return p;};const q=l<0.5?l*(1+s):l+s-l*s;const p=2*l-q;r=hue2rgb(p,q,h+1/3);g=hue2rgb(p,q,h);b=hue2rgb(p,q,h-1/3);}return {r:Math.round(r*255),g:Math.round(g*255),b:Math.round(b*255)};}
+function darkenHex(hex, amt=0.22){const hsl=rgbToHsl(hexToRgb(hex)); const l=Math.max(0, hsl.l*(1-amt)); return rgbToHex(hslToRgb({...hsl,l}));}
+function cssVar(name, fallback='#ffaa00'){return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;}
+
+// ---------- chart defaults ----------
+Chart.defaults.color='#000000'; Chart.defaults.borderColor='#e0e0e0';
+
+function applyChartDefaults() {
+  const chartText = cssVar('--chart-text');
+  const chartGrid = cssVar('--chart-grid');
+  Chart.defaults.color = chartText;
+  Chart.defaults.borderColor = chartGrid;
+
+  // Map tiles + credit
+  const url = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+  const credit = 'Basemap © OpenStreetMap, © CARTO — Positron';
+
+  if(map){
+    if(window._tileLayer) map.removeLayer(window._tileLayer);
+    window._tileLayer = L.tileLayer(url, {attribution:'&copy; OSM & CARTO', subdomains:'abcd', maxZoom:20});
+    window._tileLayer.addTo(map);
+    if(topMarkLayer){
+      const accent = cssVar('--accent','#ffcc00');
+      topMarkLayer.setStyle({color:accent, fillColor:accent});
+    }
+    if(startLineLayer){
+      const accent = cssVar('--accent','#ffcc00');
+      startLineLayer.setStyle({color:accent, opacity:0.9, weight:3});
+      if(startLineMarkers.a) startLineMarkers.a.setStyle({color:accent, fillColor:accent});
+      if(startLineMarkers.b) startLineMarkers.b.setStyle({color:accent, fillColor:accent});
+    }
+  }
+  const mc = $('mapCredit'); if(mc) mc.textContent = credit;
+}
+
+// ---------- state ----------
+let client=null, unlocked=false, viewer={user:null,pass:null};
+let chartTS=null, chartSOG=null;
+let map=null, mapInited=false, firstMapFixDone=false;
+let globalT0=null;
+
+// top mark state
+let topMark=null; // {lat,lon}
+let topMarkLayer=null;
+
+// start line state
+let startLine=null; // {a:{lat,lon}, b:{lat,lon}}
+let startLineLayer=null;
+let startLineMarkers={a:null,b:null};
+let placingStartPhase=0; // 0 idle, 1 awaiting A, 2 awaiting B
+
+function themedColor(hex){ return hex; }
+
+const units={}, discoveredOrder=[];
+
+// recording
+let recActive=false, recRows=[], recStartedAt=null;
+
+// DOM refs
+const nowUnits=$('nowUnits'), unitsList=$('unitsList');
+
+// ---------- unit management ----------
+function ensureUnit(unitId){
+  if(units[unitId]) return units[unitId];
+  // Only allow up to eight athletes
+  if (discoveredOrder.length >= 8 && !units[unitId]) {
+    log('Maximum of eight athletes supported. Additional units will not be shown.');
+    return null;
+  }
+  
+  const idx = discoveredOrder.length;
+  const config = loadUnitConfig()[unitId];
+  const baseColor = config ? config.color : COLORS_BASE[idx % COLORS_BASE.length];
+  const customName = config ? config.customName || unitId : unitId;
+  const color = baseColor; discoveredOrder.push(unitId);
+  
+  // Create or update configuration row
+  updateUnitConfigRow(unitId);
+
+  // Create base unit object
+  const u = units[unitId] = {baseColor, color, customName, originalName: unitId,
+    visible: true,
+    times: [], roll: [], pitch: [],
+    seriesRoll: [], seriesPitch: [],
+    seriesRollPk: [], seriesPitchPk: [],
+    gnssLatLngs: [], lat0: null, lon0: null, posBuf: [],
+    sogEMA: null, heading: null, sogTimes: [], sogVals: [], sogSeries: [],
+    vmgTimes: [], vmgVals: [], vmgSeries: [],
+    vx: null, vy: null,
+    idxRoll: null, idxPitch: null, idxRollPk: null, idxPitchPk: null, idxSOG: null, idxVMG: null,
+    poly: null, marker: null, nowElems: {}, statsElems: {},
+    lastRollHz: NaN, lastRollAt: 0, lastPitchHz: NaN, lastPitchAt: 0
+  };
+
+  // timeseries datasets
+  const rollDs = {label: `${customName} heel`, data: u.seriesRoll, parsing: false, borderColor: color, backgroundColor: 'transparent', pointRadius: 0, borderWidth: 2, tension: .15, spanGaps: true};
+  chartTS.data.datasets.push(rollDs); u.idxRoll = chartTS.data.datasets.length - 1;
+
+  // peak markers
+  // Peaks plotting removed from timeseries chart
+
+  // SOG dataset
+  const sogDs = {label: `${customName} SOG`, data: u.sogSeries, parsing: false, borderColor: color, backgroundColor: 'transparent', pointRadius: 0, borderWidth: 2, tension: .15, spanGaps: true};
+  chartSOG.data.datasets.push(sogDs); u.idxSOG = chartSOG.data.datasets.length - 1;
+
+  // VMG dataset (dashed)
+  const vmgDs = {label: `${customName} VMG`, data: u.vmgSeries, parsing: false, borderColor: color, backgroundColor: 'transparent', pointRadius: 0, borderWidth: 2, tension: .15, spanGaps: true, borderDash: [4,4]};
+  chartSOG.data.datasets.push(vmgDs); u.idxVMG = chartSOG.data.datasets.length - 1;
+
+  // map layers
+  u.poly = L.polyline([], {color, weight: 3, opacity: 0.95}).addTo(map);
+  u.marker = L.circleMarker([0,0], {radius: 6, color, fillColor: color, fillOpacity: 1}).addTo(map);
+  u.poly.setStyle({opacity: 0}); u.marker.setStyle({opacity: 0, fillOpacity: 0});
+
+  // Now card (+ distances)
+  const nowCard = document.createElement('div');
+  nowCard.className = 'unitNow uNums';
+  nowCard.style.setProperty('--ucolor', color);
+  // Add refresh rate indicator in top right (dynamic)
+  nowCard.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+      <div class="unitTag" id="tag-${unitId}" style="background:${color}">${customName}</div>
+      <div class="tiny" id="refresh-hz-${unitId}" style="font-size:10px;opacity:0.7;align-self:flex-start;">– Hz</div>
+    </div>
+  <div class="grid" style="grid-template-columns:1fr 1fr">
+  <div><div class="small">Heel</div><div class="num" id="now-roll-${unitId}">–</div></div>
+  <div><div class="small">Trim</div><div class="num" id="now-pitch-${unitId}">–</div></div>
+      <div><div class="small">Freq (Hz)</div><div class="num" id="now-hz-${unitId}">–</div></div>
+      <div><div class="small">Heading (°)</div><div class="num" id="now-hdg-${unitId}">–</div></div>
+      <div><div class="small">SOG (kt)</div><div class="num" id="now-sog-${unitId}">–</div></div>
+      <div><div class="small">VMG (kt)</div><div class="num" id="now-vmg-${unitId}">–</div></div>
+      <div><div class="small">Dist→Start (m)</div><div class="num" id="now-dstart-${unitId}">–</div></div>
+      <div><div class="small">Dist→Top (m)</div><div class="num" id="now-dtop-${unitId}">–</div></div>
+      <div style="grid-column:1/-1"><div class="small">Lat, Lon</div><div class="small mono" id="now-ll-${unitId}">–</div></div>
+    </div>`;
+  nowUnits.appendChild(nowCard);
+  u.nowElems = { roll: $(`now-roll-${unitId}`), pitch: $(`now-pitch-${unitId}`), hz: $(`now-hz-${unitId}`),
+               sog: $(`now-sog-${unitId}`), vmg: $(`now-vmg-${unitId}`), sogMean: $(`now-sogmean-${unitId}`),
+               hdg: $(`now-hdg-${unitId}`), ll: $(`now-ll-${unitId}`),
+               dStart: $(`now-dstart-${unitId}`), dTop: $(`now-dtop-${unitId}`),
+               refreshHz: $(`refresh-hz-${unitId}`) };
+// Update refresh rate for each athlete tile in Now
+setInterval(() => {
+  for (const id of Object.keys(units)) {
+    const u = units[id];
+    if (!u.nowElems || !u.nowElems.refreshHz) continue;
+    const times = u.times;
+    let hz = '–';
+    if (times && times.length >= 2) {
+      const dt = times[times.length - 1] - times[times.length - 2];
+      if (dt > 0 && dt < 10000) hz = (1000 / dt).toFixed(1);
+    }
+    u.nowElems.refreshHz.textContent = hz + ' Hz';
+  }
+}, 333);
+
+  // Stats card
+  const statsCol = document.createElement('div'); statsCol.className = 'card half unitStats'; statsCol.style.setProperty('--ucolor', color);
+  statsCol.innerHTML = `<div style="font-weight:700;margin-bottom:8px;"><span class="unitTag" style="background:${color}">${customName}</span> — window stats</div>
+    <div class="grid">
+      <div><div class="small">Mean Heel</div><div class="num" id="st-roll-mean-${unitId}">–</div></div>
+      <div><div class="small">Std Heel</div><div class="num" id="st-roll-std-${unitId}">–</div></div>
+      <div><div class="small">Mean Trim</div><div class="num" id="st-pitch-mean-${unitId}">–</div></div>
+      <div><div class="small">Std Trim</div><div class="num" id="st-pitch-std-${unitId}">–</div></div>
+      <div><div class="small">Peaks Heel</div><div class="num" id="st-roll-pk-${unitId}">0</div></div>
+      <div><div class="small">Peaks Trim</div><div class="num" id="st-pitch-pk-${unitId}">0</div></div>
+      <div><div class="small">Freq Heel (Hz)</div><div class="num" id="st-roll-hz-${unitId}">–</div></div>
+      <div><div class="small">Freq Trim (Hz)</div><div class="num" id="st-pitch-hz-${unitId}">–</div></div>
+      <div style="grid-column:1/-1"><div class="small">Mean SOG (kt)</div><div class="num" id="st-sog-mean-${unitId}">–</div></div>
+    </div>`;
+
+
+  // settings checkbox
+  const row = document.createElement('div');
+  row.innerHTML = `<label style="display:flex;gap:8px;align-items:center">
+    <input type="checkbox" id="chk-${unitId}" checked/>
+    <span class="unitTag" id="tag-${unitId}-settings" style="background:${color}">${customName}</span>
+    <span class="tiny">show/hide</span><span class="tiny" style="margin-left:8px;">Original: ${unitId}</span></label>`;
+  unitsList.appendChild(row);
+  row.querySelector('input').addEventListener('change', (e) => {
+    u.visible = e.target.checked;
+    [u.idxRoll, u.idxPitch, u.idxRollPk, u.idxPitchPk].forEach(i => {
+      if (i != null && chartTS.data.datasets[i]) chartTS.data.datasets[i].hidden = !u.visible;
+    });
+    [u.idxSOG, u.idxVMG].forEach(i => {
+      if (i != null && chartSOG.data.datasets[i]) chartSOG.data.datasets[i].hidden = !u.visible;
+    });
+    const rI = distIdx.roll[unitId]; if (rI != null) distCharts.roll.data.datasets[rI].hidden = !u.visible;
+    const pI = distIdx.pitch[unitId]; if (pI != null) distCharts.pitch.data.datasets[pI].hidden = !u.visible;
+    const fI = distIdx.freq[unitId];  if (fI != null) distCharts.freq.data.datasets[fI].hidden = !u.visible;
+    chartTS.update('none'); chartSOG.update('none');
+    if (distCharts.roll) distCharts.roll.update('none');
+    if (distCharts.pitch) distCharts.pitch.update('none');
+    if (distCharts.freq)  distCharts.freq.update('none');
+  });
+
+  chartTS.update('none'); chartSOG.update('none');
+  return u;
+}
+
+// apply colors to all unit visuals
+function refreshUnitStylesForTheme(){
+  for(const id of Object.keys(units)){
+    const u=units[id];
+    const c = u.baseColor;
+    u.color = c;
+    if (u.idxRoll != null && chartTS.data.datasets[u.idxRoll]) chartTS.data.datasets[u.idxRoll].borderColor = c;
+    if (u.idxPitch != null && chartTS.data.datasets[u.idxPitch]) chartTS.data.datasets[u.idxPitch].borderColor = c;
+    if (u.idxRollPk != null && chartTS.data.datasets[u.idxRollPk]) {
+      chartTS.data.datasets[u.idxRollPk].backgroundColor = c;
+      chartTS.data.datasets[u.idxRollPk].borderColor = c;
+    }
+    if (u.idxPitchPk != null && chartTS.data.datasets[u.idxPitchPk]) {
+      chartTS.data.datasets[u.idxPitchPk].backgroundColor = c;
+      chartTS.data.datasets[u.idxPitchPk].borderColor = c;
+    }
+    chartSOG.data.datasets[u.idxSOG].borderColor = c;
+    chartSOG.data.datasets[u.idxVMG].borderColor = c;
+    if(u.poly) u.poly.setStyle({color:c});
+    if(u.marker) u.marker.setStyle({color:c, fillColor:c});
+    const tagNow = document.getElementById(`tag-${id}`); if(tagNow) tagNow.style.background = c;
+    const tagSet = document.getElementById(`tag-${id}-settings`); if(tagSet) tagSet.style.background = c;
+    const nowCard = u.nowElems?.roll && document.querySelector(`#now-roll-${id}`)?.closest('.uNums'); if(nowCard) nowCard.style.setProperty('--ucolor', c);
+    const statEl = document.querySelector(`#st-roll-mean-${id}`)?.closest('.unitStats'); if(statEl) statEl.style.setProperty('--ucolor', c);
+    const rI=distIdx.roll[id]; if(rI!=null){ const ds=distCharts.roll.data.datasets[rI]; ds.borderColor=c; ds.backgroundColor=c+'22'; }
+    const pI=distIdx.pitch[id]; if(pI!=null){ const ds=distCharts.pitch.data.datasets[pI]; ds.borderColor=c; ds.backgroundColor=c+'22'; }
+    const fI=distIdx.freq[id];  if(fI!=null){ const ds=distCharts.freq.data.datasets[fI]; ds.borderColor=c; ds.backgroundColor=c+'22'; }
+  }
+}
+
+// ---------- helpers: windows, axes, prune ----------
+const viewRange=$('viewSecRange'), viewNum=$('viewSec'); let currentViewSec=parseInt(viewNum.value||'30',10);
+function applyViewWindow(val){ currentViewSec=clamp(parseInt(val||'30',10),5,600); viewRange.value=currentViewSec; viewNum.value=currentViewSec; updateAxisRange(); }
+viewRange.addEventListener('input',e=>applyViewWindow(e.target.value));
+viewNum.addEventListener('change',e=>applyViewWindow(e.target.value));
+
+const winRange=$('winSecRange'), winNum=$('winSec');
+function applyWindow(val){ const v=clamp(parseInt(val||'30',10),5,600); winRange.value=v; winNum.value=v; recomputePeaks(); chartTS.update('none'); chartSOG.update('none'); }
+winRange.addEventListener('input',e=>applyWindow(e.target.value));
+winNum.addEventListener('change',e=>applyWindow(e.target.value));
+
+function updateAxisRange(){
+  if(globalT0===null){
+    if(chartTS){chartTS.options.scales.x.min=0; chartTS.options.scales.x.max=currentViewSec; chartTS.update('none');}
+    if(chartSOG){chartSOG.options.scales.x.min=0; chartSOG.options.scales.x.max=currentViewSec; chartSOG.update('none');}
+    return;
+  }
+  const last=lastPlotT||Date.now();
+  const nowSec=(last-globalT0)/1000;
+  const xmin=Math.max(0,nowSec-currentViewSec), xmax=Math.max(currentViewSec,nowSec);
+  if(chartTS){chartTS.options.scales.x.min=Number(xmin.toFixed(1)); chartTS.options.scales.x.max=Number(xmax.toFixed(1)); chartTS.update('none');}
+  if(chartSOG){chartSOG.options.scales.x.min=Number(xmin.toFixed(1)); chartSOG.options.scales.x.max=Number(xmax.toFixed(1)); chartSOG.update('none');}
+}
+
+function pruneOld(nowMs){
+  const keepMs=Math.max(parseFloat(winNum.value||'30')*1000,MAX_KEEP_SEC*1000);
+  for(const id of Object.keys(units)){
+    const u=units[id];
+    while(u.times.length && u.times[0]<nowMs-keepMs){u.times.shift();u.roll.shift();u.pitch.shift();}
+    while(u.seriesRoll.length && (globalT0 + u.seriesRoll[0].x*1000) < nowMs-keepMs){u.seriesRoll.shift();u.seriesPitch.shift();}
+    while(u.gnssLatLngs.length>GNSS_KEEP){u.gnssLatLngs.shift(); if(u.poly) u.poly.setLatLngs(u.gnssLatLngs);}
+    while(u.posBuf.length && u.posBuf[0].t < nowMs - getSogWinSec()*1000){u.posBuf.shift();}
+    while(u.sogTimes.length && u.sogTimes[0]<nowMs-keepMs){u.sogTimes.shift();u.sogVals.shift();}
+    while(u.sogSeries.length && (globalT0 + u.sogSeries[0].x*1000) < nowMs-keepMs){u.sogSeries.shift();}
+    while(u.vmgTimes.length && u.vmgTimes[0]<nowMs-keepMs){u.vmgTimes.shift();u.vmgVals.shift();}
+    while(u.vmgSeries.length && (globalT0 + u.vmgSeries[0].x*1000) < nowMs-keepMs){u.vmgSeries.shift();}
+  }
+}
+
+// ---------- peaks & stats + distributions ----------
+function detectPeaks(vals,times,minDistMs,minProm){
+  const n=vals.length; if(n<3) return [];
+  const peaks=[]; let lastT=-1e18;
+  for(let i=1;i<n-1;i++){
+    const v=vals[i]; if(v<=vals[i-1]||v<=vals[i+1]) continue;
+    const w=5,i0=Math.max(0,i-w),i1=Math.min(n-1,i+w);
+    let base=vals[i0]; for(let j=i0+1;j<=i1;j++) base=Math.min(base,vals[j]);
+    if(v-base<minProm) continue;
+    const t=times[i]; if(t-lastT<minDistMs) continue;
+    peaks.push({t,v,i}); lastT=t;
+  }
+  return peaks;
+}
+function getWindowForUnit(u, winSec){
+  if(!u.times.length) return {tWin:[], rWin:[], pWin:[], startMs:NaN, nowU:NaN};
+  const nowU=u.times[u.times.length-1], startMs=nowU - winSec*1000;
+  let s=0; while(s<u.times.length && u.times[s]<startMs) s++;
+  return { tWin:u.times.slice(s), rWin:u.roll.slice(s), pWin:u.pitch.slice(s), startMs, nowU };
+}
+function freqSamplesFromPeaks(peaks){
+  const out=[];
+  for(let i=1;i<peaks.length;i++){
+    const dt=(peaks[i].t-peaks[i-1].t)/1000;
+    if(dt>0){ const f=1/dt; if(f>=FREQ_RANGE.min && f<=FREQ_RANGE.max) out.push(f); }
+  }
+  return out;
+}
+function updateUnifiedDistributions(){
+  if(!distCharts.roll||!distCharts.pitch||!distCharts.freqRoll||!distCharts.freqPitch) return;
+  const winSec=parseFloat(winNum.value||'30');
+
+  if(!distCharts.xsDeg){ distCharts.xsDeg=linspace(DEG_RANGE.min,DEG_RANGE.max,DEG_RANGE.gridCnt); }
+  if(!distCharts.xsHz){  distCharts.xsHz =linspace(FREQ_RANGE.min,FREQ_RANGE.max,DEG_RANGE.gridCnt); }
+
+  for(const ds of distCharts.roll.data.datasets){ ds.hidden=true; ds.data.length=0; }
+  for(const ds of distCharts.pitch.data.datasets){ ds.hidden=true; ds.data.length=0; }
+  for(const ds of distCharts.freqRoll.data.datasets){ ds.hidden=true; ds.data.length=0; }
+  for(const ds of distCharts.freqPitch.data.datasets){ ds.hidden=true; ds.data.length=0; }
+
+
+  // Get current toggle states for AVG line/label
+  let showAvgLine = true, showAvgLabel = false;
+  const lineBox = document.getElementById('showAvgLine');
+  const labelBox = document.getElementById('showAvgLabel');
+  if (lineBox) showAvgLine = !!lineBox.checked;
+  if (labelBox) showAvgLabel = !!labelBox.checked;
+
+  // Remove all previous avg annotations from all distrib charts
+  [distCharts.roll, distCharts.pitch, distCharts.freqRoll, distCharts.freqPitch].forEach(chart => {
+    if (chart && chart.options.plugins && chart.options.plugins.annotation && chart.options.plugins.annotation.annotations) {
+      Object.keys(chart.options.plugins.annotation.annotations).forEach(key => {
+        if (key.startsWith('avgline_')) delete chart.options.plugins.annotation.annotations[key];
+      });
+    }
+  });
+
+  const rollK=getKdeFactorAngles(true);
+  const pitchK=getKdeFactorAngles(false);
+  const frqK=getKdeFactorFreq();
+
+  // Gather all ys for roll, pitch, freq to determine max for each
+  let allRollYs = [], allPitchYs = [], allFreqRollYs = [], allFreqPitchYs = [];
+  const rollDatasets = [], pitchDatasets = [], freqRollDatasets = [], freqPitchDatasets = [];
+  for(const id of Object.keys(units)){
+    const u=units[id];
+    const rI=upsertDistDataset(distCharts.roll, distIdx.roll, id, u.color);
+    const pI=upsertDistDataset(distCharts.pitch,distIdx.pitch,id, u.color);
+    const frI=upsertDistDataset(distCharts.freqRoll, distIdx.freqRoll = distIdx.freqRoll || {}, id, u.color);
+    const fpI=upsertDistDataset(distCharts.freqPitch, distIdx.freqPitch = distIdx.freqPitch || {}, id, u.color);
+
+    if(!u.visible || !u.times.length){
+      distCharts.roll.data.datasets[rI].hidden=true;
+      distCharts.pitch.data.datasets[pI].hidden=true;
+      distCharts.freqRoll.data.datasets[frI].hidden=true;
+      distCharts.freqPitch.data.datasets[fpI].hidden=true;
+      continue;
+    }
+
+    const {tWin,rWin,pWin}=getWindowForUnit(u,winSec);
+
+    if(rWin.length){
+      let ys=kdeOnGridLogBackShift(rWin,distCharts.xsDeg,rollK);
+      ys = ys.map(y=>y*100);
+      allRollYs.push(...ys);
+      rollDatasets.push({idx: rI, data: ys, color: u.color});
+  // ...removed AVG line for live roll distrib...
+    }
+    if(pWin.length){
+      let ys=kdeOnGridLogBackShift(pWin,distCharts.xsDeg,pitchK);
+      ys = ys.map(y=>y*100);
+      allPitchYs.push(...ys);
+      pitchDatasets.push({idx: pI, data: ys, color: u.color});
+  // ...removed AVG line for live pitch distrib...
+    }
+    // Roll freq
+    const rPeaks=detectPeaks(rWin,tWin,parseFloat($('minDist').value||'300'),parseFloat($('minProm').value||'5.0'));
+    const fSamplesR=freqSamplesFromPeaks(rPeaks);
+    if(fSamplesR.length){
+      let ys=kdeOnGridLogBack(fSamplesR,distCharts.xsHz,frqK);
+      ys = ys.map(y=>y*100);
+      allFreqRollYs.push(...ys);
+      freqRollDatasets.push({idx: frI, data: ys, color: u.color});
+  // ...removed AVG line for live freqRoll distrib...
+    }
+    // Pitch freq
+    const pPeaks=detectPeaks(pWin,tWin,parseFloat($('minDist').value||'300'),parseFloat($('minProm').value||'5.0'));
+    const fSamplesP=freqSamplesFromPeaks(pPeaks);
+    if(fSamplesP.length){
+      let ys=kdeOnGridLogBack(fSamplesP,distCharts.xsHz,frqK);
+      ys = ys.map(y=>y*100);
+      allFreqPitchYs.push(...ys);
+      freqPitchDatasets.push({idx: fpI, data: ys, color: u.color});
+  // ...removed AVG line for live freqPitch distrib...
+    }
+  }
+
+  // Independent y max for each chart (no coupling between roll and pitch)
+  const rollMax = Math.max(10, ...allRollYs) * 1.05;
+  const pitchMax = Math.max(10, ...allPitchYs) * 1.05;
+  const freqRollMax = Math.max(10, ...allFreqRollYs) * 1.05;
+  const freqPitchMax = Math.max(10, ...allFreqPitchYs) * 1.05;
+  if (distCharts.roll)      distCharts.roll.options.scales.y.max = rollMax;
+  if (distCharts.pitch)     distCharts.pitch.options.scales.y.max = pitchMax;
+  if (distCharts.freqRoll)  distCharts.freqRoll.options.scales.y.max = freqRollMax;
+  if (distCharts.freqPitch) distCharts.freqPitch.options.scales.y.max = freqPitchMax;
+
+  // Update datasets
+  for(const ds of distCharts.roll.data.datasets){ ds.hidden=true; ds.data.length=0; }
+  for(const ds of distCharts.pitch.data.datasets){ ds.hidden=true; ds.data.length=0; }
+  for(const ds of distCharts.freqRoll.data.datasets){ ds.hidden=true; ds.data.length=0; }
+  for(const ds of distCharts.freqPitch.data.datasets){ ds.hidden=true; ds.data.length=0; }
+  for(const d of rollDatasets){
+    const ds=distCharts.roll.data.datasets[d.idx];
+    ds.data=points(distCharts.xsDeg,d.data);
+    ds.borderColor=d.color; ds.backgroundColor=d.color+'22';
+    // Set label to athlete custom name if available
+    const unitId = Object.keys(distIdx.roll).find(key => distIdx.roll[key] === d.idx);
+    ds.label = (unitId && units[unitId] && units[unitId].customName) ? units[unitId].customName : unitId || '';
+    ds.hidden=false;
+  }
+  for(const d of pitchDatasets){
+    const ds=distCharts.pitch.data.datasets[d.idx];
+    ds.data=points(distCharts.xsDeg,d.data);
+    ds.borderColor=d.color; ds.backgroundColor=d.color+'22';
+    const unitId = Object.keys(distIdx.pitch).find(key => distIdx.pitch[key] === d.idx);
+    ds.label = (unitId && units[unitId] && units[unitId].customName) ? units[unitId].customName : unitId || '';
+    ds.hidden=false;
+  }
+  for(const d of freqRollDatasets){
+    const ds=distCharts.freqRoll.data.datasets[d.idx];
+    ds.data=points(distCharts.xsHz,d.data);
+    ds.borderColor=d.color; ds.backgroundColor=d.color+'22';
+    const unitId = Object.keys(distIdx.freqRoll).find(key => distIdx.freqRoll[key] === d.idx);
+    ds.label = (unitId && units[unitId] && units[unitId].customName) ? units[unitId].customName : unitId || '';
+    ds.hidden=false;
+  }
+  for(const d of freqPitchDatasets){
+    const ds=distCharts.freqPitch.data.datasets[d.idx];
+    ds.data=points(distCharts.xsHz,d.data);
+    ds.borderColor=d.color; ds.backgroundColor=d.color+'22';
+    const unitId = Object.keys(distIdx.freqPitch).find(key => distIdx.freqPitch[key] === d.idx);
+    ds.label = (unitId && units[unitId] && units[unitId].customName) ? units[unitId].customName : unitId || '';
+    ds.hidden=false;
+  }
+
+  distCharts.roll.update('none');
+  distCharts.pitch.update('none');
+  distCharts.freqRoll.update('none');
+  distCharts.freqPitch.update('none');
+}
+function recomputePeaks(){
+  const winSec=parseFloat(winNum.value||'30'), minDist=parseFloat($('minDist').value||'300'), minProm=parseFloat($('minProm').value||'5.0');
+
+  for(const id of Object.keys(units)){
+    const u=units[id]; if(!u.times.length) return;
+    const {tWin,rWin,pWin,nowU,startMs}=getWindowForUnit(u,winSec);
+
+    const rPeaks=detectPeaks(rWin,tWin,minDist,minProm);
+    const pPeaks=detectPeaks(pWin,tWin,minDist,minProm);
+
+    u.seriesRollPk.length=0; u.seriesPitchPk.length=0;
+    for(const pk of rPeaks){u.seriesRollPk.push({x:(pk.t-globalT0)/1000,y:pk.v});}
+    for(const pk of pPeaks){u.seriesPitchPk.push({x:(pk.t-globalT0)/1000,y:pk.v});}
+
+    const freq=(peaks)=>{ if(peaks.length<2) return NaN; let s=0,c=0; for(let i=1;i<peaks.length;i++){const dt=(peaks[i].t-peaks[i-1].t)/1000; if(dt>0){s+=dt;c++;}} return c?1/(s/c):NaN; };
+    const fR=freq(rPeaks), fP=freq(pPeaks);
+    if(Number.isFinite(fR)){u.lastRollHz=fR;u.lastRollAt=nowU;}
+    if(Number.isFinite(fP)){u.lastPitchHz=fP;u.lastPitchAt=nowU;}
+    const fShowR=(Number.isFinite(u.lastRollHz)&&(nowU-(u.lastRollAt||0)<FREQ_HOLD_MS))?u.lastRollHz:(Number.isFinite(fR)?fR:NaN);
+    const fShowP=(Number.isFinite(u.lastPitchHz)&&(nowU-(u.lastPitchAt||0)<FREQ_HOLD_MS))?u.lastPitchHz:(Number.isFinite(fP)?fP:NaN);
+
+    const rs=meanStd(rWin), ps=meanStd(pWin);
+    if(u.statsElems.rMean) u.statsElems.rMean.textContent=isFinite(rs.mean)?rs.mean.toFixed(2):'–';
+    if(u.statsElems.rStd)  u.statsElems.rStd.textContent =isFinite(rs.std)? rs.std.toFixed(2) :'–';
+    if(u.statsElems.pMean) u.statsElems.pMean.textContent=isFinite(ps.mean)?ps.mean.toFixed(2):'–';
+    if(u.statsElems.pStd)  u.statsElems.pStd.textContent =isFinite(ps.std)? ps.std.toFixed(2) :'–';
+    // Mean SOG (window)
+    let sIdx=0; while(sIdx<u.sogTimes.length && u.sogTimes[sIdx]<startMs) sIdx++;
+    const sogWin=u.sogVals.slice(sIdx);
+    const sogStats=meanStd(sogWin);
+    if(u.nowElems.sogMean)   u.nowElems.sogMean.textContent  =isFinite(sogStats.mean)?sogStats.mean.toFixed(2):'–';
+
+    const fNow = Number.isFinite(fShowR)?fShowR:(Number.isFinite(fShowP)?fShowP:NaN);
+    if(u.nowElems.hz) u.nowElems.hz.textContent = isFinite(fNow)? fNow.toFixed(2):'–';
+  }
+
+  updateUnifiedDistributions();
+}
+
+startPlotTimer();
+// Live plotting toggle button logic
+function checkTopbarWidth() {
+  // Use rAF to ensure layout is up to date (important for mobile/Safari)
+  window.requestAnimationFrame(() => {
+    const topbar = document.querySelector('.topbar');
+    const title = document.querySelector('.app-title');
+    const ver = document.querySelector('.ver');
+    if (!topbar || !title || !ver) return;
+    // Reset visibility
+    title.style.display = '';
+    ver.style.display = '';
+    // Check if overflowing
+    if (topbar.scrollWidth > topbar.clientWidth + 2) {
+      title.style.display = 'none';
+      ver.style.display = 'none';
+    }
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Live plotting toggle
+  const btn = document.getElementById('btnToggleLivePlot');
+  if (btn) {
+    btn.onclick = function() {
+      livePlottingEnabled = !livePlottingEnabled;
+      if (plotTimer) clearInterval(plotTimer);
+      if (livePlottingEnabled) {
+        btn.textContent = 'Pause Live Plotting';
+        startPlotTimer();
+      } else {
+        btn.textContent = 'Resume Live Plotting';
+      }
+    };
+  }
+  window.addEventListener('resize', checkTopbarWidth);
+  // On mobile, also observe DOM/layout changes in topbar
+  const topbar = document.querySelector('.topbar');
+  if (window.MutationObserver && topbar) {
+    const mo = new MutationObserver(() => checkTopbarWidth());
+    mo.observe(topbar, { childList: true, subtree: true, attributes: true });
+  }
+});
+
+// Patch: also check topbar width after unlock (when #app is shown)
+const unlockBtn = document.getElementById('btnUnlock');
+if (unlockBtn) {
+  unlockBtn.addEventListener('click', () => {
+    setTimeout(checkTopbarWidth, 100); // Wait for UI to update
+  });
+}
+
+// ---------- Recording & Reports ----------
+const btnRecord=$('btnRecord'), recInfo=$('recInfo');
+btnRecord.addEventListener('click',()=>{ if(!recActive){ startRec(); } else { stopRec(); } });
+
+// Store all recordings in session and persist to localStorage until deleted
+let allRecordings = [];
+const RECORDINGS_KEY = 'recordings_all';
+
+function saveRecordingsToStorage() {
+  try {
+    localStorage.setItem(RECORDINGS_KEY, JSON.stringify(allRecordings));
+  } catch (e) { console.warn('Failed to save recordings:', e); }
+}
+
+function loadRecordingsFromStorage() {
+  try {
+    const data = localStorage.getItem(RECORDINGS_KEY);
+    if (data) {
+      allRecordings = JSON.parse(data);
+      generateReportsTabs();
+    }
+  } catch (e) { console.warn('Failed to load recordings:', e); }
+}
+
+// Load on startup
+window.addEventListener('DOMContentLoaded', loadRecordingsFromStorage);
+
+// Show all cached athlete names as editable config rows in settings
+function renderAllUnitConfigRows() {
+  const container = document.getElementById('unitsConfig');
+  if (!container) return;
+  container.innerHTML = '';
+  const config = loadUnitConfig();
+  const allUnitIds = Object.keys(config);
+  if (allUnitIds.length === 0) {
+    const msg = document.createElement('div');
+    msg.className = 'small';
+    msg.textContent = 'No cached athlete names.';
+    container.appendChild(msg);
+    return;
+  }
+  allUnitIds.forEach(unitId => {
+    let row = document.createElement('div');
+    row.className = 'unit-config-row';
+    row.dataset.unit = unitId;
+    row.style.display = 'grid';
+    row.style.gridTemplateColumns = 'minmax(80px, 1fr) minmax(120px, 1.5fr) minmax(100px, 1fr)';
+    row.style.gap = '8px';
+    row.style.alignItems = 'center';
+
+    // Original name label
+    const origLabel = document.createElement('div');
+    origLabel.className = 'small';
+    origLabel.textContent = unitId;
+    row.appendChild(origLabel);
+
+    // Custom name input
+    const nameInput = document.createElement('input');
+    nameInput.className = 'unit-custom-name';
+    nameInput.type = 'text';
+    nameInput.placeholder = 'Custom name';
+    nameInput.value = config[unitId].customName || '';
+    row.appendChild(nameInput);
+
+    // Color select
+    const colorSelect = document.createElement('select');
+    colorSelect.className = 'unit-color';
+    COLORS_PALETTE.forEach(color => {
+      const opt = document.createElement('option');
+      opt.value = color.value;
+      opt.textContent = color.name;
+      if (color.value === (config[unitId].color || COLORS_BASE[0])) {
+        opt.selected = true;
+      }
+      colorSelect.appendChild(opt);
+    });
+    row.appendChild(colorSelect);
+
+    container.appendChild(row);
+  });
+}
+document.addEventListener('DOMContentLoaded', renderAllUnitConfigRows);
+window.addEventListener('storage', renderAllUnitConfigRows);
+// Also call after saving config (add to your config save logic if needed)
+
+// Compute stats for a recording
+function computeRecordingStats(rows) {
+  if (!rows || !rows.length) return '';
+  // Ensure unit settings are loaded
+  if (!window.unitSettings) {
+    window.unitSettings = JSON.parse(localStorage.getItem('unitColors') || '{}');
+  }
+  // Group by unit
+  const byUnit = {};
+  rows.forEach(r => {
+    if (!byUnit[r.unit]) byUnit[r.unit] = [];
+    byUnit[r.unit].push(r);
+  });
+  // Get stored unit names and colors
+  const unitSettings = JSON.parse(localStorage.getItem('unitColors') || '{}');
+  let html = '<div class="row">';
+  Object.keys(byUnit).forEach((unit, i) => {
+    const arr = byUnit[unit];
+    const rolls = arr.map(r => r.roll).filter(Number.isFinite);
+    const pitchs = arr.map(r => r.pitch).filter(Number.isFinite);
+    const times = arr.map(r => r.t);
+    const meanStdRoll = meanStd(rolls);
+    const meanStdPitch = meanStd(pitchs);
+
+    // Peak detection and frequency calculation
+    const minDist = 300; // ms
+    const minProm = 5.0; // deg
+    const rPeaks = detectPeaks(rolls, times, minDist, minProm);
+    const pPeaks = detectPeaks(pitchs, times, minDist, minProm);
+
+    // Calculate frequencies
+    const freq = (peaks) => {
+      if(peaks.length < 2) return NaN;
+      let s = 0, c = 0;
+      for(let i = 1; i < peaks.length; i++) {
+        const dt = (peaks[i].t - peaks[i-1].t)/1000;
+        if(dt > 0) { s += dt; c++; }
+      }
+      return c ? 1/(s/c) : NaN;
+    };
+    const fR = freq(rPeaks);
+    const fP = freq(pPeaks);
+    
+    // Get unit's custom name and color from window.unitSettings
+    const storedUnit = window.unitSettings[unit] || {};
+    const displayName = storedUnit.customName || unit;
+    const displayColor = storedUnit.color || COLORS_BASE[0];
+    
+    html += `<div class="card half unitStats" style="--ucolor:${displayColor}">`;
+    html += `<div style="font-weight:700;margin-bottom:8px;"><span class="unitTag" style="background:${displayColor}">${displayName}</span> — recording stats</div>`;
+  html += `<div class="grid">`;
+  html += `<div><div class="small">Mean Heel</div><div class="num">${meanStdRoll.mean.toFixed(2)}</div></div>`;
+  html += `<div><div class="small">Std Heel</div><div class="num">${meanStdRoll.std.toFixed(2)}</div></div>`;
+  html += `<div><div class="small">Mean Trim</div><div class="num">${meanStdPitch.mean.toFixed(2)}</div></div>`;
+  html += `<div><div class="small">Std Trim</div><div class="num">${meanStdPitch.std.toFixed(2)}</div></div>`;
+  html += `<div><div class="small">Peaks Heel</div><div class="num">${rPeaks.length}</div></div>`;
+  html += `<div><div class="small">Peaks Trim</div><div class="num">${pPeaks.length}</div></div>`;
+  html += `<div><div class="small">Freq Heel (Hz)</div><div class="num">${isFinite(fR) ? fR.toFixed(2) : '–'}</div></div>`;
+  html += `<div><div class="small">Freq Trim (Hz)</div><div class="num">${isFinite(fP) ? fP.toFixed(2) : '–'}</div></div>`;
+    html += `</div></div>`;
+  });
+  html += '</div>';
+  return html;
+}
+
+
+// ---------- Tabs ----------
+function selectTab(name){
+  ['plot','angles','map','reports','settings'].forEach(t=>{
+    const el = document.getElementById('tab-'+t);
+    if (el) el.classList.add('hidden');
+  });
+  const showEl = document.getElementById('tab-'+name);
+  if (showEl) showEl.classList.remove('hidden');
+  document.querySelectorAll('.tabbtn').forEach(x=>x.classList.toggle('active',x.dataset.tab===name));
+  if(name==='angles'){
+    try{ distCharts.roll?.resize();  distCharts.roll?.update('none'); }catch{}
+    try{ distCharts.freqRoll?.resize();  distCharts.freqRoll?.update('none'); }catch{}
+  }
+  if(name==='map' && map){
+    setTimeout(()=>{ map.invalidateSize(); }, 100);
+  }
+}
+document.querySelectorAll('.tabbtn').forEach(b=>b.addEventListener('click',()=>selectTab(b.dataset.tab)));
+
+// ---------- Velocity Filter Settings ----------
+function initVelocityFilterCard(){
+  try{
+    const cfg = (typeof getVelocityFilterConfig === 'function') ? getVelocityFilterConfig() : null;
+    const en = document.getElementById('velFilterEnabled');
+    if(!en) return; // card not in DOM
+    const mode = document.getElementById('velFilterMode');
+    const maxKt = document.getElementById('velFilterMaxSpeedKnots');
+    const minDt = document.getElementById('velFilterMinDtS');
+    const maxDt = document.getElementById('velFilterMaxDtS');
+    if (cfg) {
+      en.checked = !!cfg.enabled;
+      if (mode) mode.value = (cfg.mode === 'cap' ? 'cap' : 'reject');
+      if (maxKt) maxKt.value = Number.isFinite(cfg.maxSpeedKnots) ? cfg.maxSpeedKnots : 30;
+      if (minDt) minDt.value = Number.isFinite(cfg.minDtS) ? cfg.minDtS : 0.05;
+      if (maxDt) maxDt.value = Number.isFinite(cfg.maxDtS) ? cfg.maxDtS : 40;
+    }
+  }catch(e){ /* ignore */ }
+}
+
+document.addEventListener('DOMContentLoaded', initVelocityFilterCard);
+window.addEventListener('storage', (e) => {
+  if (e.key === 'velocityFilterConfig') initVelocityFilterCard();
+});
+
+document.getElementById('velFilterSave')?.addEventListener('click', () => {
+  const en = document.getElementById('velFilterEnabled');
+  const mode = document.getElementById('velFilterMode');
+  const maxKt = document.getElementById('velFilterMaxSpeedKnots');
+  const minDt = document.getElementById('velFilterMinDtS');
+  const maxDt = document.getElementById('velFilterMaxDtS');
+  const status = document.getElementById('velFilterStatus');
+  const cfg = {
+    enabled: !!(en && en.checked),
+    mode: mode ? mode.value : 'reject',
+    maxSpeedKnots: maxKt ? parseFloat(maxKt.value) : 30,
+    minDtS: minDt ? parseFloat(minDt.value) : 0.05,
+    maxDtS: maxDt ? parseFloat(maxDt.value) : 40,
+  };
+  try{
+    const saved = (typeof saveVelocityFilterConfig === 'function') ? saveVelocityFilterConfig(cfg) : cfg;
+    if(status){
+      status.textContent = `Saved (mode: ${saved.mode}, max: ${saved.maxSpeedKnots} kt, dt: ${saved.minDtS}–${saved.maxDtS}s)`;
+      setTimeout(()=>{ status.textContent=''; }, 2500);
+    }
+  }catch(e){ if(status){ status.textContent = 'Save failed.'; } }
+});
+// ---------- Unit Configuration ----------
+document.getElementById('saveUnitConfig')?.addEventListener('click', () => {
+  if (saveUnitConfig()) {
+    // Apply configurations to all existing units
+    Object.keys(units).forEach(unitId => {
+      applyUnitConfig(unitId);
+    });
+  }
+});
+
+// ---------- Unlock & connect ----------
+document.getElementById('btnUnlock').addEventListener('click',async ()=>{
+  const pwd=document.getElementById('pw').value; if(!pwd){document.getElementById('unlockMsg').textContent='Enter a password.';return;}
+  if(!ENCRYPTED_CREDS||ENCRYPTED_CREDS==='PASTE_CIPHERTEXT_HERE'){ document.getElementById('unlockMsg').textContent='No encrypted creds embedded.'; return; }
+  try{
+    const creds=await decryptCreds(pwd,ENCRYPTED_CREDS);
+    viewer.user=creds.user; viewer.pass=creds.pass; unlocked=true;
+    document.getElementById('gate').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+    document.getElementById('maintabs').classList.remove('hidden');
+    document.getElementById('btnRecord').classList.remove('hidden');
+    document.getElementById('cid').value='web-'+Math.random().toString(16).slice(2,10);
+
+    chartTS=makeTS(); chartSOG=makeSOGChart(); makeMap();
+
+    // init per-athlete distribution charts (guard canvases across tabs)
+    (function initDists(){
+  const rollEl = document.getElementById('dist-roll');
+  const pitchEl = document.getElementById('dist-pitch');
+  const frRollEl = document.getElementById('dist-freq-roll');
+  const frPitchEl = document.getElementById('dist-freq-pitch');
+  if (rollEl) {
+    const rctx = rollEl.getContext('2d');
+    distCharts.roll = makeDensityChartMulti(rctx,'Heel', {min:DEG_RANGE.min,max:DEG_RANGE.max,step:DEG_RANGE.step,type:'linear'});
+  }
+  if (pitchEl) {
+    const pctx = pitchEl.getContext('2d');
+    distCharts.pitch= makeDensityChartMulti(pctx,'Trim',{min:DEG_RANGE.min,max:DEG_RANGE.max,step:DEG_RANGE.step,type:'linear'});
+  }
+  if (frRollEl) {
+    const frctx = frRollEl.getContext('2d');
+    distCharts.freqRoll = makeDensityChartMulti(frctx,'Freq (Heel)',  {min:FREQ_RANGE.min,max:FREQ_RANGE.max,step:FREQ_RANGE.step,type:'logarithmic'});
+  }
+  if (frPitchEl) {
+    const fpctx = frPitchEl.getContext('2d');
+    distCharts.freqPitch = makeDensityChartMulti(fpctx,'Freq (Trim)',  {min:FREQ_RANGE.min,max:FREQ_RANGE.max,step:FREQ_RANGE.step,type:'logarithmic'});
+  }
+  distCharts.xsDeg=null; distCharts.xsHz=null;
+    })();
+
+    setStatus('unlocked — not connected',false);
+    applyWindow(document.getElementById('winSec').value); applyViewWindow(document.getElementById('viewSec').value);
+
+    // Apply default chart settings
+    applyChartDefaults();
+
+    // Race buttons (now live in Settings)
+    $('btnTopMark').addEventListener('click', startPlaceTopMark);
+    $('btnStartLine').addEventListener('click', startPlaceStartLine);
+    
+    // Wind forecast button
+    $('btnWindForecast').addEventListener('click', function() {
+      const isShown = window.windForecast.toggle();
+      this.textContent = isShown ? 'Hide Wind' : 'Wind Forecast';
+    });
+    
+    // Initialize wind forecast functionality
+    if (window.windForecast) {
+      window.windForecast.init();
+    }
+
+    if(document.getElementById('autoconn').checked) connect();
+  }catch(e){ document.getElementById('unlockMsg').textContent='Wrong password or corrupted ciphertext.'; }
+});
+
+function connect(){
+  if(!unlocked) return;
+  if(client){ try{client.end(true);}catch(e){} client=null; }
+  const host=document.getElementById('host').value.trim(), port=document.getElementById('port').value.trim(), path=document.getElementById('path').value.trim()||'/mqtt';
+  const topic=document.getElementById('topic').value.trim(), cid=document.getElementById('cid').value||('web-'+Math.random().toString(16).slice(2,10));
+  document.getElementById('cid').value=cid; const url=`wss://${host}:${port}${path}`; document.getElementById('url').textContent=url;
+
+  client=mqtt.connect(url,{protocolVersion:4,clean:true,connectTimeout:8000,username:viewer.user,password:viewer.pass,clientId:cid,keepalive:30,resubscribe:true});
+  client.on('connect',()=>{
+    setStatus('connected',true);
+    client.subscribe(topic,{qos:0});
+    client.subscribe('m5/marks',{qos:0});
+    log('connected & subscribed: '+topic+' and m5/marks');
+  });
+  client.on('reconnect',()=>{setStatus('reconnecting…',false);log('reconnecting');});
+  client.on('close',()=>{setStatus('disconnected',false);log('closed');});
+  client.on('error',e=>{setStatus('error',false);log('error: '+(e?.message||e));});
+  client.on('message',(topic,payload)=>{
+    try{
+      const t=Date.now();
+      let txt; try{txt=new TextDecoder().decode(payload);}catch{txt=payload.toString?payload.toString():'';}
+      const d=JSON.parse(txt);
+      if(topic === 'm5/marks') {
+        // Handle marks update from replay
+        if(typeof d.top_mark_lat === 'number' && typeof d.top_mark_lon === 'number') {
+          setTopMark(d.top_mark_lat, d.top_mark_lon);
+        }
+        if(typeof d.start_pt1_lat === 'number' && typeof d.start_pt1_lon === 'number' && typeof d.start_pt2_lat === 'number' && typeof d.start_pt2_lon === 'number') {
+          setStartLine(d.start_pt1_lat, d.start_pt1_lon, d.start_pt2_lat, d.start_pt2_lon);
+        }
+        log('Received marks update from replay.');
+        return;
+      }
+      let unit=d.unit_id; if(!unit){const m=topic.split('/'); if(m.length>=3) unit=m[1];}
+      if(!unit) unit='unknown';
+      if(globalT0===null) globalT0=t;
+
+      const u=ensureUnit(unit);
+
+      let roll = d.roll_deg, pitch = d.pitch_deg;
+      if(typeof roll !== 'number' || typeof pitch !== 'number') {
+        log('msg missing roll/pitch: ' + txt);
+        return;
+      }
+
+      // raw arrival buffers
+      u.times.push(t); u.roll.push(roll); u.pitch.push(pitch);
+      if(u.nowElems.roll) u.nowElems.roll.textContent = roll.toFixed(2);
+      if(u.nowElems.pitch) u.nowElems.pitch.textContent = pitch.toFixed(2);
+
+      // Handle top mark and start line updates
+      if(typeof d.top_mark_lat === 'number' && typeof d.top_mark_lon === 'number') {
+        setTopMark(d.top_mark_lat, d.top_mark_lon);
+      }
+      if(typeof d.start_pt1_lat === 'number' && typeof d.start_pt1_lon === 'number' && typeof d.start_pt2_lat === 'number' && typeof d.start_pt2_lon === 'number') {
+        setStartLine(d.start_pt1_lat, d.start_pt1_lon, d.start_pt2_lat, d.start_pt2_lon);
+      }
+
+      const lat = coerceNum(d.lat), lon = coerceNum(d.lon);
+      const hasFix = validLatLon(lat, lon);
+      if(hasFix) {
+        u.gnssLatLngs.push([lat, lon]);
+        if(u.gnssLatLngs.length > GNSS_KEEP) u.gnssLatLngs.shift();
+        u.poly.setLatLngs(u.gnssLatLngs);
+        u.poly.setStyle({opacity: u.visible ? 0.95 : 0});
+        u.marker.setLatLng([lat, lon]);
+        u.marker.setStyle({ opacity: (u.visible ? 1 : 0), fillOpacity: (u.visible ? 1 : 0) });
+        if(!firstMapFixDone) fitMapIfFirst(lat, lon);
+        if(u.nowElems.ll) u.nowElems.ll.textContent = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+
+        updateVelocityFromWindow(u, t, lat, lon);
+        if(u.nowElems.sog) u.nowElems.sog.textContent = (u.sogEMA != null) ? u.sogEMA.toFixed(2) : '–';
+        if(u.nowElems.hdg) u.nowElems.hdg.textContent = (u.heading != null) ? u.heading.toFixed(0) : '–';
+      } else {
+        if(u.nowElems.ll) u.nowElems.ll.textContent = '–';
+      }
+
+      // record if active
+      if(recActive) {
+        recRows.push({
+          unit,
+          t,
+          seq: d.seq ?? '',
+          roll: (typeof d.roll_deg === 'number' ? d.roll_deg : (typeof d.roll === 'number' ? d.roll : '')),
+          pitch: (typeof d.pitch_deg === 'number' ? d.pitch_deg : (typeof d.pitch === 'number' ? d.pitch : '')),
+          lat: (hasFix ? lat : ''),
+          lon: (hasFix ? lon : ''),
+          gnss_ms: d.gnss_ms ?? '',
+          gnss_iso: d.gnss_iso ?? '',
+          ax: (typeof d.ax === 'number' ? d.ax : ''),
+          ay: (typeof d.ay === 'number' ? d.ay : ''),
+          az: (typeof d.az === 'number' ? d.az : '')
+        });
+      }
+
+      // synced plot driver
+
+      chartSOG.update('none');
+      recomputePeaks();
+      updateAxisRange();
+
+    }catch(e){log('parse error: '+e);}
+  });
+}
+
+function disconnect(){ if(client){try{client.end(true);}catch(e){} client=null;} setStatus('disconnected',false); log('disconnected'); }
+document.getElementById('btnConnect').addEventListener('click',connect);
+document.getElementById('btnDisconnect').addEventListener('click',disconnect);
+document.getElementById('btnClear').addEventListener('click',()=>{
+  for(const id of Object.keys(units)){
+    const u=units[id];
+    u.times.length=0;u.roll.length=0;u.pitch.length=0;
+    u.seriesRoll.length=0;u.seriesPitch.length=0;u.seriesRollPk.length=0;u.seriesPitchPk.length=0;
+    u.gnssLatLngs.length=0; u.poly.setLatLngs([]); u.poly.setStyle({opacity:0}); u.marker.setStyle({opacity:0, fillOpacity:0});
+    u.lat0=null; u.lon0=null; u.posBuf.length=0; u.sogEMA=null; u.heading=null;
+    u.sogTimes.length=0; u.sogVals.length=0; u.sogSeries.length=0;
+    u.vmgTimes.length=0; u.vmgVals.length=0; u.vmgSeries.length=0;
+    [u.idxRoll,u.idxPitch,u.idxRollPk,u.idxPitchPk].forEach(i=>chartTS.data.datasets[i].hidden=false);
+    [u.idxSOG,u.idxVMG].forEach(i=>chartSOG.data.datasets[i].hidden=false);
+    if(u.nowElems.dTop) u.nowElems.dTop.textContent='–';
+    if(u.nowElems.dStart) u.nowElems.dStart.textContent='–';
+  }
+  if(distCharts.roll){ for(const ds of distCharts.roll.data.datasets){ ds.data.length=0; ds.hidden=true; } distCharts.roll.update('none'); }
+  if(distCharts.pitch){ for(const ds of distCharts.pitch.data.datasets){ ds.data.length=0; ds.hidden=true; } distCharts.pitch.update('none'); }
+  if(distCharts.freq){ for(const ds of distCharts.freq.data.datasets){ ds.data.length=0; ds.hidden=true; } distCharts.freq.update('none'); }
+  globalT0=null; chartTS.update('none'); chartSOG.update('none'); log('cleared');
+  firstMapFixDone=false; if(mapInited) map.setView([0,0],2);
+});
+
+// ---------- GNSS guards + geo ----------
+function coerceNum(v){
+  if(v===null||v===undefined) return null;
+  if(typeof v==='string'){
+    const s=v.trim().toLowerCase();
+    if(s===''||s==='null'||s==='nan'||s==='undefined') return null;
+  }
+  const n=Number(v); return Number.isFinite(n)? n : null;
+}
+function validLatLon(lat,lon){return lat!==null&&lon!==null&&Number.isFinite(lat)&&Math.abs(lat)<=90&&Math.abs(lon)<=180;}
+
+// keep axes tight to window and update at 10Hz
+setInterval(updateAxisRange,100);
+
+// In case someone presses buttons early (before unlock init)
+const btnTM=document.getElementById('btnTopMark'); if(btnTM){ btnTM.addEventListener('click', startPlaceTopMark); }
+const btnSL=document.getElementById('btnStartLine'); if(btnSL){ btnSL.addEventListener('click', startPlaceStartLine); }
+const btnWF=document.getElementById('btnWindForecast'); if(btnWF){ btnWF.addEventListener('click', function() {
+  if (window.windForecast) {
+    const isShown = window.windForecast.toggle();
+    this.textContent = isShown ? 'Hide Wind' : 'Wind Forecast';
+  }
+}); }
+</script>
+</body>
+</html>
