@@ -3,14 +3,14 @@ function startRec(){
   recActive=true; recRows=[]; recStartedAt=Date.now();
   btnRecord.textContent="Stop & Save"; btnRecord.classList.add('recording','blink');
   if(window._rt) clearInterval(window._rt);
-  window._rt=setInterval(()=>{recInfo.textContent=`Recording… ${((Date.now()-recStartedAt)/1000).toFixed(1)} s`;},200);
+  // window._rt=setInterval(()=>{recInfo.textContent=`Recording… ${((Date.now()-recStartedAt)/1000).toFixed(1)} s`;},200);
   log("recording started");
 }
 
 function stopRec(){
   recActive=false; btnRecord.textContent="Start Recording"; btnRecord.classList.remove('recording','blink');
   if(window._rt){clearInterval(window._rt);window._rt=null;}
-  if(!recRows.length){recInfo.textContent="No samples recorded.";log("no samples to save");return;}
+  // if(!recRows.length){recInfo.textContent="No samples recorded.";log("no samples to save");return;}
 
   // Save recording data for reports
   const recording = {
@@ -57,7 +57,7 @@ function stopRec(){
   const fname=`trollsports_multi_${d.getFullYear()}-${fmt2(d.getMonth()+1)}-${fmt2(d.getDate())}_${fmt2(d.getHours())}-${fmt2(d.getMinutes())}-${fmt2(d.getSeconds())}.csv`;
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=fname; document.body.appendChild(a); a.click();
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);
-  recInfo.textContent=`Saved ${recRows.length} samples to ${fname}`; log(`saved CSV (${recRows.length} rows)`);
+  // recInfo.textContent=`Saved ${recRows.length} samples to ${fname}`; log(`saved CSV (${recRows.length} rows)`);
 }
 
 // make available to other modules

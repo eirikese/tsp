@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-<title>TrollSports Live v1.5.8</title>
+<title>TrollSports Live v1.5.9</title>
 <meta name="theme-color" content="#ffffff"/>
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -23,7 +23,8 @@
 <script src="position_helpers.js"></script>
 <script src="recording_helpers.js"></script>
 <script src="reports_helpers.js"></script>
-<script src="wind.js"></script>
+<script src="wind_forecast.js"></script>
+<script src="wind_manual.js"></script>
 
 <script>
   // Register and enable the annotation plugin globally
@@ -34,13 +35,13 @@
 <body>
   <div class="topbar">
     <div class="app-title">TrollSports Live</div><div class="spacer"></div>
-    <div class="ver">v1.5.8</div>
+    <div class="ver">v1.5.9</div>
     <div class="tabs hidden" id="maintabs">
       <button class="tabbtn active" data-tab="plot">Home</button>
-      <button class="tabbtn" data-tab="angles">Angles</button>
+      <button class="tabbtn" data-tab="angles">Heel</button>
       <button class="tabbtn" data-tab="map">Map</button>
       <button class="tabbtn" data-tab="reports">Reports</button>
-      <button class="tabbtn" data-tab="settings">Settings</button>
+      <button class="tabbtn" data-tab="settings">•••</button>
     </div>
   <button id="btnRecord" class="hidden" style="margin-left:16px;">Start Recording</button>
   <div id="recInfo" class="small" style="margin-left:16px;margin-top:4px;"></div>
@@ -123,7 +124,8 @@
           <div class="btns" style="margin-bottom:8px;">
             <button id="btnTopMark">Add Top Mark</button>
             <button id="btnStartLine">Add Start Line</button>
-            <button id="btnWindForecast">Wind Forecast</button>
+            <button id="btnWindForecast" style="display:none;">Wind Forecast</button>
+            <button id="btnSetWind">Set Wind</button>
           </div>
           <div id="map"></div>
           <div class="small" id="mapCredit">Basemap © OpenStreetMap, © CARTO — Dark Matter</div>
@@ -146,8 +148,30 @@
     <!-- SETTINGS TAB -->
     <section id="tab-settings" class="hidden">
       <div class="row">
-        <!-- Connection -->
+
+        <!-- Units Configuration -->
         <div class="card half">
+          <div style="font-weight:700;margin-bottom:8px;">Athlete Configuration</div>
+          <div id="unitsConfig" class="grid" style="grid-template-columns:1fr;gap:12px">
+            <!-- Dynamic content here -->
+          </div>
+          <div class="btns" style="margin-top:12px;">
+            <button id="saveUnitConfig">Save Configuration</button>
+          </div>
+          <div id="configStatus" class="small" style="margin-top:8px;"></div>
+        </div>
+
+        <!-- Units Visibility -->
+        <div class="card half">
+          <div style="font-weight:700;margin-bottom:8px;">Units Visibility</div>
+          <div id="unitsList" class="grid" style="grid-template-columns:1fr;gap:8px"></div>
+          <div class="btns" style="margin-top:12px;">
+            <button id="btnClear">Clear Data</button>
+          </div>
+        </div>
+
+        <!-- Connection -->
+        <div class="card half" style="display:none;"> <!-- HIDDEN -->
           <div style="font-weight:700;margin-bottom:8px;">Connection</div>
           <div class="grid">
             <div><label>Host</label><input id="host" value="afe7881f82fe42929e4a5370cddc7285.s1.eu.hivemq.cloud"/></div>
@@ -175,7 +199,7 @@
         </div>
 
         <!-- AVG Line/Label Toggles -->
-        <div class="card half">
+        <div class="card half" style="display:none;"> <!-- HIDDEN -->
           <div style="font-weight:700;margin-bottom:8px;">Distribution AVG Line/Label</div>
           <div class="btns">
             <label style="display:flex;align-items:center;gap:8px;">
@@ -263,27 +287,8 @@
           <div class="tiny" style="margin-top:6px;">Applies to Live and Reports. Bearing convention: 0°=North, 90°=East.</div>
         </div>
 
-        <!-- Units Configuration -->
-        <div class="card half">
-          <div style="font-weight:700;margin-bottom:8px;">Athlete Configuration</div>
-          <div id="unitsConfig" class="grid" style="grid-template-columns:1fr;gap:12px">
-            <!-- Dynamic content here -->
-          </div>
-          <div class="btns" style="margin-top:12px;">
-            <button id="saveUnitConfig">Save Configuration</button>
-          </div>
-          <div id="configStatus" class="small" style="margin-top:8px;"></div>
-        </div>
-
-        <!-- Units Visibility -->
-        <div class="card half">
-          <div style="font-weight:700;margin-bottom:8px;">Units Visibility</div>
-          <div id="unitsList" class="grid" style="grid-template-columns:1fr;gap:8px"></div>
-        </div>
-
-
-        <!-- Race Setup (moved here) -->
-        <div class="card grow">
+        <!-- Race Setup -->
+        <div class="card half" style="display:none;"> <!-- HIDDEN -->
           <div style="font-weight:700;margin-bottom:8px;">Race Setup</div>
           <div class="btns">
             <button id="btnTopMark">Add Top Mark</button>
@@ -302,7 +307,7 @@
 
 <script>
 
-const APP_VERSION="v1.5.8";
+const APP_VERSION="v1.5.9";
 const ENCRYPTED_CREDS="eyJzYWx0IjoiYU01amVaRG9rd0o5dmVDc1gwTjhoQT09IiwiaXYiOiJuTEdVM2NldmhSSGFVR2ZmIiwiY3QiOiIzeVZaUkxnRUNxaWxicU92QmExZlJkcVZUb1ZiM3NvZFArd2svK3FxTW9NZGRYZHV5V2gveTV3WmVxakZlZkV6L2ZpZjN6SEpqU3Z0TXd2OCJ9";
 const $=id=>document.getElementById(id);
 
@@ -361,6 +366,15 @@ let startLine=null; // {a:{lat,lon}, b:{lat,lon}}
 let startLineLayer=null;
 let startLineMarkers={a:null,b:null};
 let placingStartPhase=0; // 0 idle, 1 awaiting A, 2 awaiting B
+
+
+// use helper from wind_manual
+function createSmallWindArrowSVG(direction, size=24){
+  if (window.windManual && typeof window.windManual.createSmallWindArrowSVG==='function'){
+    return window.windManual.createSmallWindArrowSVG(direction, size);
+  }
+  return '';
+}
 
 function themedColor(hex){ return hex; }
 
@@ -440,6 +454,7 @@ function ensureUnit(unitId){
   <div><div class="small">Trim</div><div class="num" id="now-pitch-${unitId}">–</div></div>
       <div><div class="small">Freq (Hz)</div><div class="num" id="now-hz-${unitId}">–</div></div>
       <div><div class="small">Heading (°)</div><div class="num" id="now-hdg-${unitId}">–</div></div>
+      <div><div class="small">TWA (°)</div><div class="num" id="now-twa-${unitId}">–</div></div>
       <div><div class="small">SOG (kt)</div><div class="num" id="now-sog-${unitId}">–</div></div>
       <div><div class="small">VMG (kt)</div><div class="num" id="now-vmg-${unitId}">–</div></div>
       <div><div class="small">Dist→Start (m)</div><div class="num" id="now-dstart-${unitId}">–</div></div>
@@ -449,7 +464,7 @@ function ensureUnit(unitId){
   nowUnits.appendChild(nowCard);
   u.nowElems = { roll: $(`now-roll-${unitId}`), pitch: $(`now-pitch-${unitId}`), hz: $(`now-hz-${unitId}`),
                sog: $(`now-sog-${unitId}`), vmg: $(`now-vmg-${unitId}`), sogMean: $(`now-sogmean-${unitId}`),
-               hdg: $(`now-hdg-${unitId}`), ll: $(`now-ll-${unitId}`),
+               hdg: $(`now-hdg-${unitId}`), twa: $(`now-twa-${unitId}`), ll: $(`now-ll-${unitId}`),
                dStart: $(`now-dstart-${unitId}`), dTop: $(`now-dtop-${unitId}`),
                refreshHz: $(`refresh-hz-${unitId}`) };
 // Update refresh rate for each athlete tile in Now
@@ -1024,6 +1039,45 @@ function computeRecordingStats(rows) {
     };
     const fR = freq(rPeaks);
     const fP = freq(pPeaks);
+    // Compute TWA stats if wind direction is available
+    let twaDisplay = '–';
+    try {
+      const windDir = (typeof getActiveWindDirection === 'function') ? getActiveWindDirection() : null;
+      if (Number.isFinite(windDir)) {
+        // derive headings from lat/lon in recording
+        const heads = [];
+        const deg2rad = (d)=>d*Math.PI/180; const rad2deg = (r)=>r*180/Math.PI;
+        const bearingDeg = (lat1,lon1,lat2,lon2)=>{
+          const φ1=deg2rad(lat1), φ2=deg2rad(lat2); const Δλ=deg2rad(lon2-lon1);
+          const y=Math.sin(Δλ)*Math.cos(φ2);
+          const x=Math.cos(φ1)*Math.sin(φ2)-Math.sin(φ1)*Math.cos(φ2)*Math.cos(Δλ);
+          let θ = rad2deg(Math.atan2(y,x));
+          // normalize 0..360
+          θ = ((θ%360)+360)%360; return θ;
+        };
+        for (let k=1;k<arr.length;k++){
+          const a=arr[k-1], b=arr[k];
+          const lat1=Number(a.lat), lon1=Number(a.lon), lat2=Number(b.lat), lon2=Number(b.lon);
+          if (Number.isFinite(lat1)&&Number.isFinite(lon1)&&Number.isFinite(lat2)&&Number.isFinite(lon2)){
+            // skip identical points
+            if (lat1===lat2 && lon1===lon2) continue;
+            const hdg = bearingDeg(lat1,lon1,lat2,lon2);
+            heads.push(hdg);
+          }
+        }
+        if (heads.length>0 && typeof angleDiffDeg==='function'){
+          const twas = heads.map(h=> angleDiffDeg(windDir, h)).filter(Number.isFinite);
+          if (twas.length>1){
+            const s = meanStd(twas);
+            if (Number.isFinite(s.mean) && Number.isFinite(s.std)) {
+              twaDisplay = `${s.mean.toFixed(0)} ± ${s.std.toFixed(0)}`;
+            }
+          } else if (twas.length===1) {
+            twaDisplay = `${twas[0].toFixed(0)} ± 0`;
+          }
+        }
+      }
+    } catch(e) { /* ignore TWA errors */ }
     
     // Get unit's custom name and color from window.unitSettings
     const storedUnit = window.unitSettings[unit] || {};
@@ -1037,6 +1091,7 @@ function computeRecordingStats(rows) {
   html += `<div><div class="small">Std Heel</div><div class="num">${meanStdRoll.std.toFixed(2)}</div></div>`;
   html += `<div><div class="small">Mean Trim</div><div class="num">${meanStdPitch.mean.toFixed(2)}</div></div>`;
   html += `<div><div class="small">Std Trim</div><div class="num">${meanStdPitch.std.toFixed(2)}</div></div>`;
+  html += `<div><div class="small">TWA (°)</div><div class="num">${twaDisplay}</div></div>`;
   html += `<div><div class="small">Peaks Heel</div><div class="num">${rPeaks.length}</div></div>`;
   html += `<div><div class="small">Peaks Trim</div><div class="num">${pPeaks.length}</div></div>`;
   html += `<div><div class="small">Freq Heel (Hz)</div><div class="num">${isFinite(fR) ? fR.toFixed(2) : '–'}</div></div>`;
@@ -1184,6 +1239,10 @@ document.getElementById('btnUnlock').addEventListener('click',async ()=>{
     if (window.windForecast) {
       window.windForecast.init();
     }
+    // Initialize manual wind functionality
+    if (window.windManual) {
+      window.windManual.init();
+    }
 
     if(document.getElementById('autoconn').checked) connect();
   }catch(e){ document.getElementById('unlockMsg').textContent='Wrong password or corrupted ciphertext.'; }
@@ -1261,7 +1320,8 @@ function connect(){
 
         updateVelocityFromWindow(u, t, lat, lon);
         if(u.nowElems.sog) u.nowElems.sog.textContent = (u.sogEMA != null) ? u.sogEMA.toFixed(2) : '–';
-        if(u.nowElems.hdg) u.nowElems.hdg.textContent = (u.heading != null) ? u.heading.toFixed(0) : '–';
+  if(u.nowElems.hdg) u.nowElems.hdg.textContent = (u.heading != null) ? u.heading.toFixed(0) : '–';
+  updateUnitTWA(u);
       } else {
         if(u.nowElems.ll) u.nowElems.ll.textContent = '–';
       }
@@ -1329,6 +1389,36 @@ function coerceNum(v){
 }
 function validLatLon(lat,lon){return lat!==null&&lon!==null&&Number.isFinite(lat)&&Math.abs(lat)<=90&&Math.abs(lon)<=180;}
 
+// ----- TWA helpers -----
+const normalizeDeg = (d)=> (window.windManual?.normalizeDeg ? window.windManual.normalizeDeg(d) : d);
+const angleDiffDeg = (a,b)=> (window.windManual?.angleDiffDeg ? window.windManual.angleDiffDeg(a,b) : (a-b));
+const getActiveWindDirection = ()=> (window.windManual?.getActiveWindDirection ? window.windManual.getActiveWindDirection() : null);
+function updateUnitTWA(u){
+  try{
+    const wd = getActiveWindDirection();
+    if (wd==null || u==null || u.heading==null || !u.nowElems?.twa){
+      if(u?.nowElems?.twa) u.nowElems.twa.textContent='–';
+      return;
+    }
+    // TWA: true wind angle relative to bow; positive to starboard (wind from right), negative to port
+    const twa = angleDiffDeg(wd, u.heading);
+    u.nowElems.twa.textContent = isFinite(twa) ? twa.toFixed(0) : '–';
+    // VMG relative to wind: VMG = SOG * cos(TWA)
+    if(Number.isFinite(u.sogEMA)){
+      const vmg = u.sogEMA * Math.cos((twa*Math.PI)/180);
+      if(u.nowElems.vmg) u.nowElems.vmg.textContent = isFinite(vmg)? vmg.toFixed(2) : '–';
+      // Append to VMG series as well (live view only; reuse current time window)
+      const nowMs = Date.now();
+      if(globalT0!=null){
+        const xPlot=(nowMs-globalT0)/1000;
+        if(Number.isFinite(vmg)){
+          u.vmgTimes.push(nowMs); u.vmgVals.push(vmg); u.vmgSeries.push({x:xPlot,y:vmg});
+        }
+      }
+    }
+  }catch{}
+}
+
 // keep axes tight to window and update at 10Hz
 setInterval(updateAxisRange,100);
 
@@ -1341,7 +1431,20 @@ const btnWF=document.getElementById('btnWindForecast'); if(btnWF){ btnWF.addEven
     this.textContent = isShown ? 'Hide Wind' : 'Wind Forecast';
   }
 }); }
+
+// Recompute TWA for all units when manual wind changes
+window.addEventListener('manualWindChanged', ()=>{
+  for(const id of Object.keys(units)) updateUnitTWA(units[id]);
+});
+window.addEventListener('manualWindChanged', (e)=>{
+  // overlay handled in wind_manual
+});
+window.addEventListener('forecastWindChanged', (e)=>{
+  for(const id of Object.keys(units)) updateUnitTWA(units[id]);
+});
+const btnSW=document.getElementById('btnSetWind'); if(btnSW){ btnSW.addEventListener('click', function() {
+  if (window.windManual) window.windManual.promptSet();
+}); }
 </script>
 </body>
-
 </html>
