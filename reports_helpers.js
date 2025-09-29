@@ -242,7 +242,7 @@ function showReportFor(recId) {
     if (shownIds.includes(r.unit)) {
       if (!byUnit[r.unit]) byUnit[r.unit] = [];
       byUnit[r.unit].push(r);
-    }
+    } 
   });
     // --- Radar chart: Heading bins vs mean SOG ---
     // Bin headings into 12 sectors (30° each)
