@@ -43,8 +43,8 @@
       <button class="tabbtn" data-tab="reports">Reports</button>
       <button class="tabbtn" data-tab="settings">•••</button>
     </div>
-  <button id="btnRecord" class="hidden" style="margin-left:16px;">Start Recording</button>
-  <div id="recInfo" class="small" style="margin-left:16px;margin-top:4px;"></div>
+  <button id="btnRecord" class="hidden" style="margin-left:12px;">Record</button>
+  <!-- <div id="recInfo" class="small" style="margin-left:16px;margin-top:4px;"></div> -->
   </div>
 
   <!-- Gate -->
@@ -104,13 +104,13 @@
     <section id="tab-angles" class="hidden">
       <div class="row">
         <div class="card half">
-          <div class="dens-head" style="font-weight:700;">Heel (°) — per athlete</div>
+          <div class="dens-head" style="font-weight:700;">Heel (°) last 30sec</div>
           <div class="plot"><canvas id="dist-roll"></canvas></div>
         </div>
-      </div>
-      <div class="row">
+      <!-- </div>
+      <div class="row"> -->
         <div class="card half">
-          <div class="dens-head" style="font-weight:700;">Frequency (Heel, Hz) — per athlete</div>
+          <div class="dens-head" style="font-weight:700;">Frequency (Heel, Hz) last 30sec</div>
           <div class="plot"><canvas id="dist-freq-roll"></canvas></div>
         </div>
       </div>
@@ -1211,6 +1211,15 @@ document.getElementById('btnUnlock').addEventListener('click',async ()=>{
   if (frRollEl) {
     const frctx = frRollEl.getContext('2d');
     distCharts.freqRoll = makeDensityChartMulti(frctx,'Freq (Heel)',  {min:FREQ_RANGE.min,max:FREQ_RANGE.max,step:FREQ_RANGE.step,type:'logarithmic'});
+    // Update x-axis ticks to only show a few key values
+    if (distCharts.freqRoll?.options?.scales?.x) {
+      distCharts.freqRoll.options.scales.x.ticks.callback = function(value) {
+        // Only label these tick values
+        const allowed = [0.1, 0.5, 1, 2, 5];
+        return allowed.includes(value) ? value : '';
+      };
+      distCharts.freqRoll.update('none');
+    }
   }
   if (frPitchEl) {
     const fpctx = frPitchEl.getContext('2d');

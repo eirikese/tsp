@@ -92,6 +92,7 @@ function drawKDEMulti(canvasId, kdeData, min, max, n, factor, label, logKDE, col
   const el = document.getElementById(canvasId);
   if (!el) return;
   const xs = linspace(min, max, n);
+  const isSOG = typeof canvasId === 'string' && canvasId.indexOf('hist-sog') !== -1;
   const datasets = Object.keys(kdeData).map((unit, i) => {
     const data = kdeData[unit].data;
     if (!data.length) return null;
@@ -116,6 +117,23 @@ function drawKDEMulti(canvasId, kdeData, min, max, n, factor, label, logKDE, col
   // Determine if this is a freq distrib (by canvasId)
   const isFreq = canvasId.includes('freq');
   const freqTicks = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5];
+  // Build annotation config: default zero-line for non-log x; customize for TWA
+  const isTWA = typeof canvasId === 'string' && canvasId.indexOf('twa') !== -1;
+  let annCfg = !logXAxis ? red_zero_line() : undefined;
+  if (isTWA && annCfg && annCfg.annotations && annCfg.annotations.zeroline) {
+    // Make the zero line dotted, thicker, and label it as WIND
+    annCfg.annotations.zeroline.borderDash = [6, 6];
+    annCfg.annotations.zeroline.borderWidth = 2;
+    annCfg.annotations.zeroline.label = {
+      display: true,
+      content: 'WIND',
+      color: '#ff0000',
+      backgroundColor: 'rgba(0,0,0,0)',
+      position: 'top',
+      yAdjust: -6,
+      font: { size: 12 }
+    };
+  }
   const chart = new Chart(el.getContext('2d'), {
     type: 'line',
     data: {
@@ -130,30 +148,22 @@ function drawKDEMulti(canvasId, kdeData, min, max, n, factor, label, logKDE, col
       plugins: {
         legend: { position: 'bottom', labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true, pointStyle: 'line', color: '#000000' } },
         tooltip: { mode: 'index', intersect: false, callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(2)}%` } },
-        annotation: !logXAxis ? red_zero_line() : undefined
+        annotation: annCfg
       },
       elements: { line: { tension: 0.25, borderWidth: 2 }, point: { radius: 0 } },
       scales: {
         x: isFreq ? {
           type: 'logarithmic',
+          display: false,
           title: { display: false },
           min: min,
           max: max,
-          grid: { color: '#e0e0e0', tickLength: 4, lineWidth: 1 },
-          ticks: {
-            color: '#000000',
-            padding: 6,
-            maxRotation: 0,
-            minRotation: 0,
-            values: freqTicks,
-            callback: function(value) {
-              return freqTicks.includes(value) ? value : '';
-            }
-          }
+          grid: { display: false, drawTicks: false, drawOnChartArea: false },
+          ticks: { display: false }
         }
         : logXAxis ? {
           type: 'logarithmic',
-          title: { display: false },
+          title: { display: !!label, text: label },
           min: min,
           max: max,
           grid: { color: '#e0e0e0', tickLength: 4, lineWidth: 1 },
@@ -170,7 +180,7 @@ function drawKDEMulti(canvasId, kdeData, min, max, n, factor, label, logKDE, col
           }
         } : {
           type: 'linear',
-          title: { display: false },
+          title: { display: !!label, text: label },
           min: min,
           max: max,
           grid: { color: '#e0e0e0', tickLength: 4, lineWidth: 1 },
@@ -179,9 +189,9 @@ function drawKDEMulti(canvasId, kdeData, min, max, n, factor, label, logKDE, col
             padding: 6,
             maxRotation: 0,
             minRotation: 0,
-            stepSize: 10,
+            stepSize: isSOG ? 5 : 10,
             includeBounds: true,
-            callback: (v) => String(v)
+            callback: (v) => isSOG ? String(Math.round(Number(v))) : String(v)
           }
         },
         y: {
@@ -196,48 +206,50 @@ function drawKDEMulti(canvasId, kdeData, min, max, n, factor, label, logKDE, col
     plugins: [window['chartjs-plugin-annotation']].filter(Boolean)
   });
 
-  // Always show AVG line for all athletes in reports
-  let showAvgLabel = false;
-  const labelBox = document.getElementById('showAvgLabel');
-  if (labelBox) showAvgLabel = !!labelBox.checked;
+  // Draw AVG lines for non-frequency distributions only
+  if (!isFreq) {
+    let showAvgLabel = false;
+    const labelBox = document.getElementById('showAvgLabel');
+    if (labelBox) showAvgLabel = !!labelBox.checked;
 
-  let avgDebugStr = '';
-  let fallbackWarn = false;
-  Object.keys(kdeData).forEach(unit => {
-    const data = kdeData[unit].data;
-    if (!data.length) {
-      // Fallback: show gray line at center of x axis
-      if (logKDE) {
-        const center = (min + max) / 2;
-        addAvgLineToDistribChart(chart, center, '#888', 'NO DATA', true, true);
-        fallbackWarn = true;
-        avgDebugStr += ` | ${unit}: NO DATA`;
+    let avgDebugStr = '';
+    let fallbackWarn = false;
+    Object.keys(kdeData).forEach(unit => {
+      const data = kdeData[unit].data;
+      if (!data.length) {
+        // Fallback: show gray line at center of x axis
+        if (logKDE) {
+          const center = (min + max) / 2;
+          addAvgLineToDistribChart(chart, center, '#888', 'NO DATA', true, true);
+          fallbackWarn = true;
+          avgDebugStr += ` | ${unit}: NO DATA`;
+        }
+        return;
       }
-      return;
+      let ys = logKDE ? kdeOnGridLogBack(data, xs, factor) : kdeOnGridLogBackShift(data, xs, factor);
+      ys = ys.map(y=>y*100);
+      // For all distribs, use the mean of the raw data for AVG line
+      const avg = meanStd(data).mean;
+      const color = colorMap[unit] || COLORS_BASE[0];
+      if (Number.isFinite(avg)) {
+        addAvgLineToDistribChart(chart, avg, color, undefined, true, showAvgLabel);
+        avgDebugStr += ` | ${unit}: ${avg.toFixed(2)}`;
+      } else if (logKDE) {
+        // Fallback: show gray line at center
+        const center = (min + max) / 2;
+        addAvgLineToDistribChart(chart, center, '#888', 'NO AVG', true, true);
+        fallbackWarn = true;
+        avgDebugStr += ` | ${unit}: NO AVG`;
+      }
+    });
+    // Set plot title to base only (no stats/debug info)
+    const titleEl = el.closest('.card')?.querySelector('div[style*="font-weight:700"]');
+    if (titleEl) {
+      let baseTitle = titleEl.textContent.split(' | ')[0];
+      titleEl.textContent = baseTitle;
+      if (fallbackWarn) titleEl.style.color = '#b00';
+      else titleEl.style.color = '';
     }
-    let ys = logKDE ? kdeOnGridLogBack(data, xs, factor) : kdeOnGridLogBackShift(data, xs, factor);
-    ys = ys.map(y=>y*100);
-    // For all distribs, use the mean of the raw data for AVG line
-    const avg = meanStd(data).mean;
-    const color = colorMap[unit] || COLORS_BASE[0];
-    if (Number.isFinite(avg)) {
-      addAvgLineToDistribChart(chart, avg, color, undefined, true, showAvgLabel);
-      avgDebugStr += ` | ${unit}: ${avg.toFixed(2)}`;
-    } else if (logKDE) {
-      // Fallback: show gray line at center
-      const center = (min + max) / 2;
-      addAvgLineToDistribChart(chart, center, '#888', 'NO AVG', true, true);
-      fallbackWarn = true;
-      avgDebugStr += ` | ${unit}: NO AVG`;
-    }
-  });
-  // Set plot title to base only (no stats/debug info)
-  const titleEl = el.closest('.card')?.querySelector('div[style*="font-weight:700"]');
-  if (titleEl) {
-    let baseTitle = titleEl.textContent.split(' | ')[0];
-    titleEl.textContent = baseTitle;
-    if (fallbackWarn) titleEl.style.color = '#b00';
-    else titleEl.style.color = '';
   }
 }
 

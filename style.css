@@ -45,9 +45,13 @@ label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;max-widt
 /* Responsive grid for report tiles */
 .reports-tiles-grid {
 display: grid;
-grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+grid-template-columns: 1fr; /* default: single column (phones) */
 gap: 24px;
 margin-top: 32px;
+}
+/* Two columns for normal PC screens and up */
+@media (min-width: 900px){
+	.reports-tiles-grid{ grid-template-columns: repeat(2, 1fr); }
 }
 .log{font-size:12px;background:var(--input);color:var(--text);padding:10px;border-radius:10px;max-height:200px;overflow:auto;border:1px dashed var(--border)}
 .plot{display:flex;align-items:stretch;justify-content:stretch;position:relative;height:45vh;min-height:280px;max-height:480px;width:100%}
