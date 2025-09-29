@@ -52,7 +52,22 @@
     <div class="card half">
       <div style="font-weight:700;margin-bottom:8px;">Protected dashboard</div>
       <div class="small">Enter site password to unlock. Viewer creds are decrypted in-browser (read-only).</div>
-      <label>Site password</label><input id="pw" type="password" placeholder="Enter password"/>
+      <label for="pw">Site password</label>
+      <input id="pw" type="password" placeholder="Enter password"
+        autocomplete="current-password"
+        inputmode="text"
+        aria-label="Site password"
+        style="font-size:1.2em;padding:8px;width:100%;box-sizing:border-box;"
+      />
+      <script>
+        // Extra: ensure input is focused on tap (iOS fix)
+        document.addEventListener('DOMContentLoaded', function() {
+          var pw = document.getElementById('pw');
+          if (pw) {
+            pw.addEventListener('touchend', function() { this.focus(); });
+          }
+        });
+      </script>
       <div class="btns"><button id="btnUnlock">Unlock</button></div>
       <div id="unlockMsg" class="small"></div>
     </div>
