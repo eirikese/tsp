@@ -33,6 +33,8 @@
 
 </head>
 <body>
+  <!-- Hidden dummy input for iPad keyboard hack -->
+  <input id="ios-dummy-input" style="position:absolute;opacity:0;height:0;width:0;pointer-events:none;z-index:-1;" tabindex="-1" autocomplete="off" />
   <div class="topbar">
     <div class="app-title">TrollSports Live</div><div class="spacer"></div>
     <div class="ver">v1.5.9</div>
@@ -60,14 +62,19 @@
         readonly
       />
       <script>
-        // Advanced iOS standalone keyboard workaround for password input
+        // Aggressive iOS/iPadOS standalone keyboard workaround for password input
         document.addEventListener('DOMContentLoaded', function() {
           var pw = document.getElementById('pw');
-          if (pw) {
+          var dummy = document.getElementById('ios-dummy-input');
+          if (pw && dummy) {
             var unlockKeyboard = function(e) {
-              pw.removeAttribute('readonly');
-              pw.focus();
-              pw.click();
+              // Focus dummy input first to trigger keyboard
+              dummy.focus();
+              setTimeout(function() {
+                pw.removeAttribute('readonly');
+                pw.focus();
+                pw.click();
+              }, 50);
               pw.removeEventListener('touchstart', unlockKeyboard);
               pw.removeEventListener('focus', unlockKeyboard);
               pw.removeEventListener('mousedown', unlockKeyboard);
@@ -1481,15 +1488,19 @@ const btnSW=document.getElementById('btnSetWind'); if(btnSW){ btnSW.addEventList
 }); }
 </script>
 <script>
-// iOS Standalone (Add to Home Screen) input focus workaround for all inputs
+// iOS Standalone (Add to Home Screen) input focus workaround for all inputs (with dummy input hack)
 document.addEventListener('DOMContentLoaded', function() {
   if (window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches) {
+    var dummy = document.getElementById('ios-dummy-input');
     document.querySelectorAll('input, textarea').forEach(function(input) {
       input.setAttribute('readonly', '');
       var unlockKeyboard = function(e) {
-        input.removeAttribute('readonly');
-        input.focus();
-        input.click();
+        if (dummy) dummy.focus();
+        setTimeout(function() {
+          input.removeAttribute('readonly');
+          input.focus();
+          input.click();
+        }, 50);
         input.removeEventListener('touchstart', unlockKeyboard);
         input.removeEventListener('focus', unlockKeyboard);
         input.removeEventListener('mousedown', unlockKeyboard);
