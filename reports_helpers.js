@@ -198,31 +198,78 @@ function showReportFor(recId) {
     </div>`;
   });
   html += `</div>`;
-  const plotW = 900, plotH = 280;
+  const plotW = 900, plotH = 200;
+  // Prepare data presence checks
+  // Check for SOG data (at least one SOG value for any shown athlete)
+  let hasSogData = false;
+  let hasMapData = false;
+  {
+    const shownIds = unitIds.filter(id => rec._athleteShow[id]);
+    const byUnit = {};
+    rec.rows.forEach(r => {
+      if (shownIds.includes(r.unit)) {
+        if (!byUnit[r.unit]) byUnit[r.unit] = [];
+        byUnit[r.unit].push(r);
+      }
+    });
+    // SOG data check
+    for (const unit of shownIds) {
+      const arr = byUnit[unit] || [];
+      for (let i = 1; i < arr.length; ++i) {
+        const r1 = arr[i-1], r2 = arr[i];
+        if (Number.isFinite(r1.lat) && Number.isFinite(r1.lon) && Number.isFinite(r2.lat) && Number.isFinite(r2.lon) && Number.isFinite(r1.t) && Number.isFinite(r2.t)) {
+          const vf = getVelocityFilterConfig();
+          const v = vf.enabled ? velocitySafe({lat:r1.lat, lon:r1.lon}, r1.t, {lat:r2.lat, lon:r2.lon}, r2.t, vf)
+                               : velocity({lat:r1.lat, lon:r1.lon}, r1.t, {lat:r2.lat, lon:r2.lon}, r2.t);
+          if ((!vf.enabled || v.ok) && Number.isFinite(v.speed_knots) && v.speed_knots > 0) {
+            hasSogData = true;
+            break;
+          }
+        }
+      }
+      if (hasSogData) break;
+    }
+    // Map data check (at least two valid lat/lon points for any shown athlete)
+    for (const unit of shownIds) {
+      const arr = byUnit[unit] || [];
+      let validPoints = 0;
+      for (const r of arr) {
+        if (Number.isFinite(r.lat) && Number.isFinite(r.lon)) validPoints++;
+        if (validPoints >= 2) {
+          hasMapData = true;
+          break;
+        }
+      }
+      if (hasMapData) break;
+    }
+  }
   html += `
   <div class="reports-tiles-grid">
       <div class="card grow" style="padding:24px 20px;display:flex;flex-direction:column;gap:12px;min-height:${plotH+60}px;">
   <div style='font-weight:700;margin-bottom:4px;text-align:center;'>Heel Distribution</div>
         <div class="plot"><canvas id="report-kde-roll" width="${plotW}" height="${plotH}" style="width:100%;height:100%;max-width:100%;max-height:100%;"></canvas></div>
-      </div>`;
-  html += `
+      </div>
 
       <div class="card grow" style="padding:24px 20px;display:flex;flex-direction:column;gap:12px;min-height:${plotH+60}px;">
   <div style='font-weight:700;margin-bottom:4px;text-align:center;'>Heel Frequency Distribution</div>
         <div class="plot"><canvas id="report-kde-freq-roll" width="${plotW}" height="${plotH}" style="width:100%;height:100%;max-width:100%;max-height:100%;"></canvas></div>
       </div>
+      ${hasMapData ? `
       <div class="card grow" style="padding:24px 20px;display:flex;flex-direction:column;gap:12px;">
         <div style='font-weight:700;margin-bottom:4px;text-align:center;'>Position Traces — XY (meters)</div>
         <div class="plot"><canvas id="report-pos-xy" width="${plotW}" height="${plotH}" style="width:100%;height:100%;max-width:100%;max-height:100%;"></canvas></div>
       </div>
+      ` : ''}
       <div class="card grow" style="padding:24px 20px;display:none;flex-direction:column;gap:12px;min-height:${plotH+60}px;">
         <div style='font-weight:700;margin-bottom:4px;text-align:center;'>Polar Plot: Heading (°) vs SOG (kt)</div>
         <div class="plot"><canvas id="report-polar-heading-sog" width="${Math.round(plotW*0.8)}" height="${plotH}" style="width:100%;height:100%;max-width:100%;max-height:100%;"></canvas></div>
       </div>
+      ${hasSogData ? `
       <div class="card grow" style="padding:24px 20px;display:flex;flex-direction:column;gap:12px;min-height:${plotH+60}px;">
         <div style='font-weight:700;margin-bottom:4px;text-align:center;'>SOG Histogram (kt)</div>
         <div class="plot"><canvas id="report-hist-sog" width="${plotW}" height="${plotH}" style="width:100%;height:100%;max-width:100%;max-height:100%;"></canvas></div>
       </div>
+      ` : ''}
       ${hasRecordedWind ? `
       <div class="card grow" style="padding:24px 20px;display:flex;flex-direction:column;gap:12px;min-height:${plotH+60}px;">
         <div style='font-weight:700;margin-bottom:4px;text-align:center;'>TWA Distribution (°)</div>
