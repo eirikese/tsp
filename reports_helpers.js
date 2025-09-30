@@ -570,6 +570,8 @@ function showReportFor(recId) {
       const allowed = [0.1, 0.5, 1, 2, 5];
       return allowed.includes(value) ? value : '';
     };
+    freqChart.options.scales.x.ticks.maxRotation = 0;
+    freqChart.options.scales.x.ticks.minRotation = 0;
     freqChart.update('none');
   }
     // --- TWA Distribution (°) per unit using recorded wind when available ---
