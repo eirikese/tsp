@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-<title>TrollSports Live v1.4.5</title>
+<title>TrollSports Live v1.5.4</title>
 <meta name="theme-color" content="#ffffff"/>
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -33,11 +33,9 @@
 
 </head>
 <body>
-  <!-- Hidden dummy input for iPad keyboard hack -->
-  <input id="ios-dummy-input" style="position:absolute;opacity:0;height:0;width:0;pointer-events:none;z-index:-1;" tabindex="-1" autocomplete="off" />
   <div class="topbar">
     <div class="app-title">TrollSports Live</div><div class="spacer"></div>
-    <div class="ver">v1.4.5</div>
+    <div class="ver">v1.5.4</div>
     <div class="tabs hidden" id="maintabs">
       <button class="tabbtn active" data-tab="plot">Home</button>
       <button class="tabbtn" data-tab="angles">Heel</button>
@@ -57,31 +55,17 @@
       <label for="pw">Site password</label>
       <input id="pw" type="password" placeholder="Enter password"
         autocomplete="current-password"
+        inputmode="text"
         aria-label="Site password"
         style="font-size:1em;padding:8px;width:100%;box-sizing:border-box;"
-        readonly
+        value="ripsbusk"
       />
       <script>
-        // Aggressive iOS/iPadOS standalone keyboard workaround for password input
+        // Extra: ensure input is focused on tap (iOS fix)
         document.addEventListener('DOMContentLoaded', function() {
           var pw = document.getElementById('pw');
-          var dummy = document.getElementById('ios-dummy-input');
-          if (pw && dummy) {
-            var unlockKeyboard = function(e) {
-              // Focus dummy input first to trigger keyboard
-              dummy.focus();
-              setTimeout(function() {
-                pw.removeAttribute('readonly');
-                pw.focus();
-                pw.click();
-              }, 50);
-              pw.removeEventListener('touchstart', unlockKeyboard);
-              pw.removeEventListener('focus', unlockKeyboard);
-              pw.removeEventListener('mousedown', unlockKeyboard);
-            };
-            pw.addEventListener('touchstart', unlockKeyboard);
-            pw.addEventListener('focus', unlockKeyboard);
-            pw.addEventListener('mousedown', unlockKeyboard);
+          if (pw) {
+            pw.addEventListener('touchend', function() { this.focus(); });
           }
         });
       </script>
@@ -339,7 +323,7 @@
 
 <script>
 
-const APP_VERSION="v1.4.5";
+const APP_VERSION="v1.5.4";
 const ENCRYPTED_CREDS="eyJzYWx0IjoiYU01amVaRG9rd0o5dmVDc1gwTjhoQT09IiwiaXYiOiJuTEdVM2NldmhSSGFVR2ZmIiwiY3QiOiIzeVZaUkxnRUNxaWxicU92QmExZlJkcVZUb1ZiM3NvZFArd2svK3FxTW9NZGRYZHV5V2gveTV3WmVxakZlZkV6L2ZpZjN6SEpqU3Z0TXd2OCJ9";
 const $=id=>document.getElementById(id);
 
@@ -1487,31 +1471,5 @@ const btnSW=document.getElementById('btnSetWind'); if(btnSW){ btnSW.addEventList
   if (window.windManual) window.windManual.promptSet();
 }); }
 </script>
-<script>
-// iOS Standalone (Add to Home Screen) input focus workaround for all inputs (with dummy input hack)
-document.addEventListener('DOMContentLoaded', function() {
-  if (window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches) {
-    var dummy = document.getElementById('ios-dummy-input');
-    document.querySelectorAll('input, textarea').forEach(function(input) {
-      input.setAttribute('readonly', '');
-      var unlockKeyboard = function(e) {
-        if (dummy) dummy.focus();
-        setTimeout(function() {
-          input.removeAttribute('readonly');
-          input.focus();
-          input.click();
-        }, 50);
-        input.removeEventListener('touchstart', unlockKeyboard);
-        input.removeEventListener('focus', unlockKeyboard);
-        input.removeEventListener('mousedown', unlockKeyboard);
-      };
-      input.addEventListener('touchstart', unlockKeyboard);
-      input.addEventListener('focus', unlockKeyboard);
-      input.addEventListener('mousedown', unlockKeyboard);
-    });
-  }
-});
-</script>
 </body>
-
 </html>
