@@ -58,7 +58,6 @@
         inputmode="text"
         aria-label="Site password"
         style="font-size:1em;padding:8px;width:100%;box-sizing:border-box;"
-        value="ripsbusk"
       />
       <script>
         // Extra: ensure input is focused on tap (iOS fix)
@@ -1470,6 +1469,18 @@ window.addEventListener('forecastWindChanged', (e)=>{
 const btnSW=document.getElementById('btnSetWind'); if(btnSW){ btnSW.addEventListener('click', function() {
   if (window.windManual) window.windManual.promptSet();
 }); }
+</script>
+<script>
+// iOS Standalone (Add to Home Screen) input focus workaround
+document.addEventListener('DOMContentLoaded', function() {
+  if (window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches) {
+    document.querySelectorAll('input, textarea').forEach(function(input) {
+      input.addEventListener('touchend', function() {
+        setTimeout(() => this.focus(), 0);
+      });
+    });
+  }
+});
 </script>
 </body>
 </html>
