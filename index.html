@@ -55,16 +55,26 @@
       <label for="pw">Site password</label>
       <input id="pw" type="password" placeholder="Enter password"
         autocomplete="current-password"
-        inputmode="text"
         aria-label="Site password"
         style="font-size:1em;padding:8px;width:100%;box-sizing:border-box;"
+        readonly
       />
       <script>
-        // Extra: ensure input is focused on tap (iOS fix)
+        // Advanced iOS standalone keyboard workaround for password input
         document.addEventListener('DOMContentLoaded', function() {
           var pw = document.getElementById('pw');
           if (pw) {
-            pw.addEventListener('touchend', function() { this.focus(); });
+            var unlockKeyboard = function(e) {
+              pw.removeAttribute('readonly');
+              pw.focus();
+              pw.click();
+              pw.removeEventListener('touchstart', unlockKeyboard);
+              pw.removeEventListener('focus', unlockKeyboard);
+              pw.removeEventListener('mousedown', unlockKeyboard);
+            };
+            pw.addEventListener('touchstart', unlockKeyboard);
+            pw.addEventListener('focus', unlockKeyboard);
+            pw.addEventListener('mousedown', unlockKeyboard);
           }
         });
       </script>
@@ -1471,13 +1481,22 @@ const btnSW=document.getElementById('btnSetWind'); if(btnSW){ btnSW.addEventList
 }); }
 </script>
 <script>
-// iOS Standalone (Add to Home Screen) input focus workaround
+// iOS Standalone (Add to Home Screen) input focus workaround for all inputs
 document.addEventListener('DOMContentLoaded', function() {
   if (window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches) {
     document.querySelectorAll('input, textarea').forEach(function(input) {
-      input.addEventListener('touchend', function() {
-        setTimeout(() => this.focus(), 0);
-      });
+      input.setAttribute('readonly', '');
+      var unlockKeyboard = function(e) {
+        input.removeAttribute('readonly');
+        input.focus();
+        input.click();
+        input.removeEventListener('touchstart', unlockKeyboard);
+        input.removeEventListener('focus', unlockKeyboard);
+        input.removeEventListener('mousedown', unlockKeyboard);
+      };
+      input.addEventListener('touchstart', unlockKeyboard);
+      input.addEventListener('focus', unlockKeyboard);
+      input.addEventListener('mousedown', unlockKeyboard);
     });
   }
 });
