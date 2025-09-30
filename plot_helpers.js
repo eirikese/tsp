@@ -102,6 +102,7 @@ function makeDensityChartMulti(ctx, label, xConf){
       layout:{padding:{left:10,right:10,bottom:8,top:4}},
       scales:{
         x:{ type, min, max,
+            title:{display:true,text:label||'X'},
             grid:{color:Chart.defaults.borderColor,tickLength:4},
             ticks:{
               color:Chart.defaults.color,

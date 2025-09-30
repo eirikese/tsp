@@ -154,16 +154,16 @@ function drawKDEMulti(canvasId, kdeData, min, max, n, factor, label, logKDE, col
       scales: {
         x: isFreq ? {
           type: 'logarithmic',
-          display: false,
-          title: { display: false },
+          display: true,
+          title: { display: true, text: label || 'X' },
           min: min,
           max: max,
           grid: { display: false, drawTicks: false, drawOnChartArea: false },
-          ticks: { display: false }
+          ticks: { display: true }
         }
         : logXAxis ? {
           type: 'logarithmic',
-          title: { display: !!label, text: label },
+          title: { display: true, text: label || 'X' },
           min: min,
           max: max,
           grid: { color: '#e0e0e0', tickLength: 4, lineWidth: 1 },
@@ -180,7 +180,7 @@ function drawKDEMulti(canvasId, kdeData, min, max, n, factor, label, logKDE, col
           }
         } : {
           type: 'linear',
-          title: { display: !!label, text: label },
+          title: { display: true, text: label || 'X' },
           min: min,
           max: max,
           grid: { color: '#e0e0e0', tickLength: 4, lineWidth: 1 },
