@@ -1286,7 +1286,8 @@ function connect(){
     setStatus('connected',true);
     client.subscribe(topic,{qos:0});
     client.subscribe('m5/marks',{qos:0});
-    log('connected & subscribed: '+topic+' and m5/marks');
+    client.subscribe('recording/#',{qos:0});
+    log('connected & subscribed: '+topic+' and m5/marks and recording/#');
   });
   client.on('reconnect',()=>{setStatus('reconnecting…',false);log('reconnecting');});
   client.on('close',()=>{setStatus('disconnected',false);log('closed');});
@@ -1296,6 +1297,23 @@ function connect(){
       const t=Date.now();
       let txt; try{txt=new TextDecoder().decode(payload);}catch{txt=payload.toString?payload.toString():'';}
       const d=JSON.parse(txt);
+      // Handle recording events: recording/start and recording/end
+      if (topic.startsWith('recording/')) {
+        const ev = (d && d.event) ? String(d.event) : (topic.endsWith('/start') ? 'start' : (topic.endsWith('/end') ? 'end' : ''));
+        if (ev === 'start') {
+          if (!recActive) {
+            startRec();
+            if (typeof d.ts_ms === 'number' && Number.isFinite(d.ts_ms)) {
+              recStartedAt = d.ts_ms;
+            }
+          }
+          log(`recording START from ${d?.source||'unknown'}${d?.label?(' ['+d.label+']'):''}`);
+        } else if (ev === 'end') {
+          if (recActive) stopRec();
+          log(`recording END from ${d?.source||'unknown'}${d?.label?(' ['+d.label+']'):''}`);
+        }
+        return; // do not treat as telemetry
+      }
       if(topic === 'm5/marks') {
         // Handle marks update from replay
         if(typeof d.top_mark_lat === 'number' && typeof d.top_mark_lon === 'number') {

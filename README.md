@@ -53,9 +53,3 @@ The web interface is located at [github-io/split_index/index.html](https://eirik
 2. **Open the web interface** in your browser
 3. **Start Training**
 4. **Review your data** in real time or after your session.
-
----
-
-## Support
-
-For questions or troubleshooting, please refer to the Help tab in the web interface or contact the TrollSports team.
