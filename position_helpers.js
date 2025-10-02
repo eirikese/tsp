@@ -259,15 +259,49 @@ function onCoachPos(pos){
 }
 
 function onCoachErr(err){
-  log('Geolocation error: '+(err?.message||String(err)));
+  const code = (typeof err?.code === 'number') ? err.code : null;
+  const msg = err?.message || String(err);
+  log('Geolocation error ('+code+'): '+msg);
   stopCoachWatch();
-  try{ alert('Location error: '+(err?.message||String(err))); }catch{}
+  // Help users on iOS/Safari when permission is denied or insecure context
+  if(code === 1 /* PERMISSION_DENIED */){
+    const help = [
+      'Location permission was denied. On iPad/Safari:',
+      '• Serve this page over HTTPS (or use http://localhost in development).',
+      '• Settings > Privacy & Security > Location Services must be ON.',
+      '• For Safari: Settings > Safari > Location > Allow While Using.',
+      '• If using “Add to Home Screen” (web app): open Settings > [Web App name] > Location > While Using.',
+      'Then reload the page and tap “Show Coach” again.'
+    ].join('\n');
+    try{ alert(help); }catch{}
+  } else if(!window.isSecureContext){
+    try{ alert('This page is not in a secure context. Please open it via HTTPS or localhost, then try again.'); }catch{}
+  } else {
+    try{ alert('Location error: '+msg); }catch{}
+  }
 }
 
 function startCoachWatch(){
   if(!('geolocation' in navigator)){
     try{ alert('Geolocation is not supported on this device/browser.'); }catch{}
     return;
+  }
+  // Require secure context for geolocation in modern Safari/Chrome
+  if(!window.isSecureContext){
+    try{ alert('This page is not secure. Please use HTTPS (or http://localhost) to enable location on iPad/Safari.'); }catch{}
+    return;
+  }
+  // Preflight: if Permissions API is available and already denied, guide the user
+  if(navigator.permissions && navigator.permissions.query){
+    try{
+      navigator.permissions.query({ name: 'geolocation' }).then(res => {
+        if(res && res.state === 'denied'){
+          try{ alert('Location is blocked for this site. On iPad: Settings > Safari > Location > Allow While Using, then reload.'); }catch{}
+          return;
+        }
+        // If 'granted' or 'prompt', proceed to watch
+      });
+    }catch{}
   }
   if(coachWatchId!=null) return; // already running
   coachPrev = null;
