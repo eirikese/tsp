@@ -142,6 +142,7 @@
             <button id="btnStartLine">Add Start Line</button>
             <button id="btnWindForecast" style="display:none;">Wind Forecast</button>
             <button id="btnSetWind">Set Wind</button>
+            <button id="btnCoach" title="Show your phone's live GPS position as a blue triangle on the map">Show Coach</button>
           </div>
           <div id="map"></div>
           <div class="small" id="mapCredit">Basemap © OpenStreetMap, © CARTO — Dark Matter</div>
@@ -1470,6 +1471,7 @@ window.addEventListener('forecastWindChanged', (e)=>{
 const btnSW=document.getElementById('btnSetWind'); if(btnSW){ btnSW.addEventListener('click', function() {
   if (window.windManual) window.windManual.promptSet();
 }); }
+
 </script>
 </body>
 </html>

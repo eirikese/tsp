@@ -202,6 +202,113 @@ if (sogRange && sogNum) {
   sogNum.addEventListener('change',e=>sogRange.value=e.target.value);
 }
 
+// ---------- Coach (phone) live position on map ----------
+let coachWatchId = null;
+let coachMarker = null;
+let coachPrev = null;
+
+function coachComputeBearing(lat1, lon1, lat2, lon2){
+  const toR=d=>d*Math.PI/180, toD=r=>r*180/Math.PI;
+  const φ1=toR(lat1), φ2=toR(lat2), Δλ=toR(lon2-lon1);
+  const y=Math.sin(Δλ)*Math.cos(φ2);
+  const x=Math.cos(φ1)*Math.sin(φ2)-Math.sin(φ1)*Math.cos(φ2)*Math.cos(Δλ);
+  let θ=toD(Math.atan2(y,x));
+  return ((θ%360)+360)%360;
+}
+
+function ensureCoachMarker(){
+  if(!mapInited){ log('map not ready'); return; }
+  if(!coachMarker){
+    const icon = L.divIcon({
+      className: 'coach-icon',
+      html: '<div class="coach-rot" style="width:34px;height:34px;transform-origin:50% 55%;display:flex;align-items:center;justify-content:center;">\
+        <svg width="34" height="34" viewBox="0 0 34 34" xmlns="http://www.w3.org/2000/svg">\
+          <polygon points="17,2 32,32 2,32" fill="#1e90ff" stroke="#0a64c9" stroke-width="2" />\
+        </svg>\
+      </div>',
+      iconSize: [34,34],
+      iconAnchor: [17,17]
+    });
+    coachMarker = L.marker([0,0], { icon, interactive:false, keyboard:false });
+    coachMarker.addTo(map);
+  }
+}
+
+function setCoachHeading(deg){
+  try{
+    const el = coachMarker?.getElement()?.querySelector('.coach-rot');
+    if(el) el.style.transform = `rotate(${deg}deg)`;
+  }catch{}
+}
+
+function onCoachPos(pos){
+  if(!mapInited) return;
+  const lat = pos?.coords?.latitude;
+  const lon = pos?.coords?.longitude;
+  if(!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+  ensureCoachMarker();
+  coachMarker.setLatLng([lat, lon]);
+  let hdg = pos?.coords && Number.isFinite(pos.coords.heading) ? pos.coords.heading : null;
+  if(hdg==null && coachPrev){
+    const b = coachComputeBearing(coachPrev.lat, coachPrev.lon, lat, lon);
+    if(Number.isFinite(b)) hdg = b;
+  }
+  if(Number.isFinite(hdg)) setCoachHeading(hdg);
+  coachPrev = {lat, lon};
+  if(!firstMapFixDone) fitMapIfFirst(lat, lon);
+}
+
+function onCoachErr(err){
+  log('Geolocation error: '+(err?.message||String(err)));
+  stopCoachWatch();
+  try{ alert('Location error: '+(err?.message||String(err))); }catch{}
+}
+
+function startCoachWatch(){
+  if(!('geolocation' in navigator)){
+    try{ alert('Geolocation is not supported on this device/browser.'); }catch{}
+    return;
+  }
+  if(coachWatchId!=null) return; // already running
+  coachPrev = null;
+  coachWatchId = navigator.geolocation.watchPosition(onCoachPos, onCoachErr, {
+    enableHighAccuracy: true,
+    maximumAge: 1000,
+    timeout: 10000
+  });
+  const b=document.getElementById('btnCoach'); if(b) b.textContent='Hide Coach';
+  // ensure user sees the map
+  if(typeof selectTab==='function') selectTab('map');
+}
+
+function stopCoachWatch(){
+  if(coachWatchId!=null){
+    try{ navigator.geolocation.clearWatch(coachWatchId); }catch{}
+    coachWatchId = null;
+  }
+  if(coachMarker){
+    try{ map.removeLayer(coachMarker); }catch{}
+    coachMarker = null;
+  }
+  coachPrev = null;
+  const b=document.getElementById('btnCoach'); if(b) b.textContent='Show Coach';
+}
+
+// Wire up button after DOM is ready (scripts load in <head>)
+function bindCoachButton(){
+  const b=document.getElementById('btnCoach');
+  if(!b || b._coachBound) return;
+  b._coachBound = true;
+  b.addEventListener('click', function(){
+    if(coachWatchId==null) startCoachWatch(); else stopCoachWatch();
+  });
+}
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', bindCoachButton);
+} else {
+  bindCoachButton();
+}
+
 
 // make available to other modules
 window.setTopMark = setTopMark;
@@ -220,3 +327,5 @@ window.Rm = Rm;
 window.MAX_KEEP_SEC = MAX_KEEP_SEC;
 window.FREQ_HOLD_MS = FREQ_HOLD_MS;
 window.GNSS_KEEP = GNSS_KEEP;
+window.startCoachWatch = startCoachWatch;
+window.stopCoachWatch = stopCoachWatch;
