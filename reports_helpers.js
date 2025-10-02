@@ -5,8 +5,50 @@ function generateReportsTabs() {
   if (!tabsEl || !contentEl) return;
   tabsEl.innerHTML = '';
   contentEl.innerHTML = '';
+
+  // Prepare Import CSV controls (appended later after buttons)
+  // Hidden file input (single file)
+  const _importFileInput = document.createElement('input');
+  _importFileInput.type = 'file';
+  _importFileInput.accept = '.csv,text/csv';
+  _importFileInput.style.display = 'none';
+  _importFileInput.addEventListener('change', async (e) => {
+    try{
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const text = await file.text();
+      const rec = parseCsvTextToRecording(text, file.name);
+      if (!rec || !rec.rows || rec.rows.length === 0) {
+        contentEl.innerHTML = '<div class="small">Import failed or contained no samples.</div>';
+        return;
+      }
+      allRecordings.push(rec);
+      if (typeof saveRecordingsToStorage === 'function') saveRecordingsToStorage();
+      generateReportsTabs();
+      if (rec && rec.id) {
+        setTimeout(()=>{ try{ showReportFor(rec.id); }catch{} }, 0);
+      }
+    }catch(err){
+      console.warn('CSV import failed:', err);
+      contentEl.innerHTML = '<div class="small">CSV import failed.</div>';
+    } finally {
+      e.target.value = '';
+    }
+  });
+  tabsEl.appendChild(_importFileInput);
+  const _importBtn = document.createElement('button');
+  _importBtn.textContent = 'Import CSV';
+  _importBtn.className = 'small';
+  _importBtn.onclick = () => _importFileInput.click();
+
   if (allRecordings.length === 0) {
-    contentEl.innerHTML = '<div class="small">No recordings yet. Finish a recording to see reports.</div>';
+    // When no recordings, show Import button on the right
+    const spacer = document.createElement('div');
+    spacer.style.flex = '1 1 auto';
+    spacer.style.display = 'inline-block';
+    tabsEl.appendChild(spacer);
+    tabsEl.appendChild(_importBtn);
+    contentEl.innerHTML = '<div class="small">No recordings yet. Use "Import CSV" to load a past session or finish a recording to see reports.</div>';
     return;
   }
   allRecordings.forEach((rec, idx) => {
@@ -68,8 +110,147 @@ function generateReportsTabs() {
     }
   };
   tabsEl.appendChild(renBtn);
+  // Add spacer to push actions to the right, then Import to the right of Rename
+  const spacer = document.createElement('div');
+  spacer.style.flex = '1 1 auto';
+  spacer.style.display = 'inline-block';
+  tabsEl.appendChild(spacer);
+  _importBtn.style.marginLeft = '8px';
+  tabsEl.appendChild(_importBtn);
   // Show latest by default
   showReportFor(allRecordings[allRecordings.length-1].id);
+}
+
+// Parse a CSV text (exported by this app or similar) into a recording object
+function parseCsvTextToRecording(csvText, fileName='import.csv'){
+  if (!csvText || typeof csvText !== 'string') return null;
+  const lines = csvText.replace(/\r\n?/g, '\n').split('\n').filter(l=>l.trim().length>0);
+  if (lines.length === 0) return null;
+
+  // Find header (first line that looks like comma-separated with at least unit/time fields)
+  let headerLineIndex = -1;
+  for (let i=0;i<Math.min(10, lines.length); i++){
+    const l = lines[i].trim();
+    if (!l.includes(',')) continue;
+    const lower = l.toLowerCase();
+    if (lower.includes('unit') || lower.includes('unit_id') || lower.includes('timestamp') || lower.includes('roll')) {
+      headerLineIndex = i; break;
+    }
+  }
+  if (headerLineIndex === -1) return null;
+
+  const header = lines[headerLineIndex].split(',').map(h=>h.trim());
+  const idx = (nameVariants) => {
+    for (const n of nameVariants) {
+      const j = header.findIndex(h => h.toLowerCase() === n.toLowerCase());
+      if (j !== -1) return j;
+    }
+    return -1;
+  };
+  const cUnit = idx(['unit_id','unit','athlete_id']);
+  const cAthlete = idx(['athlete','athlete_name']);
+  const cTsMs = idx(['timestamp_ms','ts_ms','time_ms']);
+  const cIso = idx(['iso_time','iso','time_iso']);
+  const cSeq = idx(['seq','sequence']);
+  const cRoll = idx(['roll_deg','roll']);
+  const cPitch = idx(['pitch_deg','pitch']);
+  const cLat = idx(['lat','latitude']);
+  const cLon = idx(['lon','lng','longitude']);
+  const cGnssMs = idx(['gnss_ms']);
+  const cGnssIso = idx(['gnss_iso']);
+  const cAx = idx(['ax']);
+  const cAy = idx(['ay']);
+  const cAz = idx(['az']);
+
+  // Metadata defaults
+  let topMark = null;
+  let startLine = null;
+  let windAtStart = null;
+  let windAtEnd = null;
+
+  function parseNum(s){
+    if (s==null) return null;
+    const t = String(s).trim();
+    if (t==='') return null;
+    const n = Number(t);
+    return Number.isFinite(n) ? n : null;
+  }
+  function parseTimeMs(cells){
+    const tms = (cTsMs!==-1) ? parseNum(cells[cTsMs]) : null;
+    if (Number.isFinite(tms)) return tms;
+    if (cIso!==-1) {
+      const iso = (cells[cIso]||'').replace(/^"|"$/g,'');
+      const ms = Date.parse(iso);
+      if (Number.isFinite(ms)) return ms;
+    }
+    return null;
+  }
+
+  const rows = [];
+  for (let i=headerLineIndex+1; i<lines.length; i++){
+    const line = lines[i].trim();
+    if (!line) continue;
+    const firstCell = line.split(',')[0].trim().toLowerCase();
+    // Metadata lines as produced by this app's exporter
+    if (firstCell === 'top_mark'){
+      const parts = line.split(',');
+      const lat = parseNum(parts[1]);
+      const lon = parseNum(parts[2]);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) topMark = { lat, lon };
+      continue;
+    }
+    if (firstCell === 'start_pt1' || firstCell === 'start_pt2'){
+      const parts = line.split(',');
+      const lat = parseNum(parts[1]);
+      const lon = parseNum(parts[2]);
+      if (!startLine) startLine = { a:null, b:null };
+      if (Number.isFinite(lat) && Number.isFinite(lon)){
+        if (firstCell === 'start_pt1') startLine.a = { lat, lon };
+        else startLine.b = { lat, lon };
+      }
+      continue;
+    }
+    if (firstCell === 'wind_start' || firstCell === 'wind_end'){
+      const parts = line.split(',');
+      const direction = parseNum(parts[1]);
+      const knots = parseNum(parts[2]);
+      const w = Number.isFinite(direction) ? { direction, knots: Number.isFinite(knots)?knots:null } : null;
+      if (firstCell === 'wind_start') windAtStart = w;
+      else windAtEnd = w;
+      continue;
+    }
+
+    // Data rows
+    const cells = line.split(',');
+    const unit = (cUnit!==-1 ? (cells[cUnit]||'').trim() : (cAthlete!==-1 ? (cells[cAthlete]||'').trim() : 'unknown')) || 'unknown';
+    const t = parseTimeMs(cells);
+    const seq = (cSeq!==-1 ? (cells[cSeq]||'') : '');
+    const roll = parseNum(cells[cRoll]);
+    const pitch = parseNum(cells[cPitch]);
+    const lat = parseNum(cells[cLat]);
+    const lon = parseNum(cells[cLon]);
+    const gnss_ms = (cGnssMs!==-1 ? parseNum(cells[cGnssMs]) : null);
+    const gnss_iso = (cGnssIso!==-1 ? (cells[cGnssIso]||'').replace(/^"|"$/g,'') : '');
+    const ax = (cAx!==-1 ? parseNum(cells[cAx]) : null);
+    const ay = (cAy!==-1 ? parseNum(cells[cAy]) : null);
+    const az = (cAz!==-1 ? parseNum(cells[cAz]) : null);
+    // Only include rows with at least time and one of roll/pitch or lat/lon
+    if (!Number.isFinite(t)) continue;
+    const hasAngles = Number.isFinite(roll) || Number.isFinite(pitch);
+    const hasFix = Number.isFinite(lat) && Number.isFinite(lon);
+    if (!hasAngles && !hasFix) continue;
+    rows.push({ unit, t, seq, roll: Number.isFinite(roll)?roll:null, pitch: Number.isFinite(pitch)?pitch:null, lat: Number.isFinite(lat)?lat:null, lon: Number.isFinite(lon)?lon:null, gnss_ms, gnss_iso, ax, ay, az });
+  }
+
+  if (!rows.length) return null;
+  // Derive startedAt as min t
+  let startedAt = rows[0].t;
+  for (const r of rows) if (Number.isFinite(r.t) && r.t < startedAt) startedAt = r.t;
+  // Compose id and label from file name if available
+  const baseLabel = (fileName||'').replace(/\.[^/.]+$/, '');
+  const id = `import-${Date.now()}`;
+  const rec = { id, startedAt, rows, topMark, startLine, windAtStart, windAtEnd, label: baseLabel };
+  return rec;
 }
 
 function showReportFor(recId) {
