@@ -157,7 +157,8 @@ function generateReportsTabs() {
   }
 
   if (allRecordings.length === 0) {
-    contentEl.innerHTML = '<div class="small">No recordings yet. Use "Import CSV" to load a past session or finish a recording to see reports.</div>';
+    // Still show Tools (Import CSV, etc.). Tabs/meta remain empty.
+    if (contentEl) contentEl.innerHTML = '<div class="small">No recordings yet. Use "Import CSV" to load a past session or finish a recording to see reports.</div>';
     return;
   }
 
@@ -474,10 +475,10 @@ function showReportFor(recId) {
       const max = Math.max(...a);
       return {mean, sd, max};
     }
-    const rollStats = meanStd(rolls);
-    const pitchStats = meanStd(pitchs);
-    const sogStats = meanStd(sogs);
-    const headingStats = meanStd(headings);
+  const rollStats = meanStd(rolls);
+  const pitchStats = meanStd(pitchs);
+  const sogStats = meanStd(sogs);
+  const headingStats = meanStd(headings);
     // Compute TWA (True Wind Angle) using recorded wind when available
     let twaStats = { mean: null, sd: null };
     try {
@@ -496,13 +497,13 @@ function showReportFor(recId) {
         twaStats = meanStd(twas);
       }
     } catch(e) { /* ignore TWA errors */ }
-    html += `<div class="card half unitStats" style="--ucolor:${colorMap[id]};min-width:200px;max-width:400px;">
+  html += `<div class="card half unitStats" style="--ucolor:${colorMap[id]};min-width:200px;max-width:400px;">
   <div style="font-weight:700;margin-bottom:8px;"><span class="unitTag" style="background:${colorMap[id]}">${window.unitSettings[id]?.name || id}</span></div>
       <div class="grid">
-  <div><div class="small">Avg Heel (°)</div><div class="num">${rollStats.mean!==null ? rollStats.mean.toFixed(2)+' ±'+rollStats.sd.toFixed(2)+'°' : '–'}</div></div>
-  <div><div class="small">Avg Trim (°)</div><div class="num">${pitchStats.mean!==null ? pitchStats.mean.toFixed(2)+' ±'+pitchStats.sd.toFixed(2)+'°' : '–'}</div></div>
-        <div><div class="small">Avg SOG (kt)</div><div class="num">${sogStats.mean!==null ? sogStats.mean.toFixed(2)+' ±'+sogStats.sd.toFixed(2) : '–'}</div></div>
-        <div><div class="small">Max SOG (kt)</div><div class="num">${sogStats.max!==null ? sogStats.max.toFixed(2) : '–'}</div></div>
+        <div><div class="small">Avg Heel (°)</div><div class="num">${rollStats.mean!==null ? rollStats.mean.toFixed(1)+' ±'+rollStats.sd.toFixed(1)+'°' : '–'}</div></div>
+        <div><div class="small">Avg Trim (°)</div><div class="num">${pitchStats.mean!==null ? pitchStats.mean.toFixed(1)+' ±'+pitchStats.sd.toFixed(1)+'°' : '–'}</div></div>
+        <div><div class="small">Avg SOG (kt)</div><div class="num">${sogStats.mean!==null ? sogStats.mean.toFixed(1)+' ±'+sogStats.sd.toFixed(1) : '–'}</div></div>
+        <div><div class="small">Max SOG (kt)</div><div class="num">${sogStats.max!==null ? sogStats.max.toFixed(1) : '–'}</div></div>
         <div><div class="small">TWA (°)</div><div class="num">${twaStats.mean!==null ? twaStats.mean.toFixed(1)+' ±'+twaStats.sd.toFixed(1)+'°' : '–'}</div></div>
         <div><div class="small">Heading (°)</div><div class="num">${headingStats.mean!==null ? headingStats.mean.toFixed(1)+' ±'+headingStats.sd.toFixed(1)+'°' : '–'}</div></div>
       </div>

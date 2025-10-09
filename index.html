@@ -342,10 +342,10 @@
         <div class="card half">
           <div style="font-weight:700;margin-bottom:8px;">Recording</div>
           <label style="display:flex;align-items:center;gap:8px;">
-            <input type="checkbox" id="autoDownloadCsv" unchecked/>
+            <input type="checkbox" id="autoDownloadCsv"/>
             Auto-download CSV on stop recording
           </label>
-          <div class="tiny" style="margin-top:6px;">Disable to prevent automatic CSV download after ending a recording.</div>
+          <div class="tiny" style="margin-top:6px;">Enable to prompt automatic CSV download after ending a recording.</div>
         </div>
       </div>
     </section>
@@ -521,9 +521,6 @@ function ensureUnit(unitId){
   // timeseries datasets
   const rollDs = {label: `${customName} heel`, data: u.seriesRoll, parsing: false, borderColor: color, backgroundColor: 'transparent', pointRadius: 0, borderWidth: 2, tension: .15, spanGaps: true};
   chartTS.data.datasets.push(rollDs); u.idxRoll = chartTS.data.datasets.length - 1;
-
-  // peak markers
-  // Peaks plotting removed from timeseries chart
 
   // SOG dataset
   const sogDs = {label: `${customName} SOG`, data: u.sogSeries, parsing: false, borderColor: color, backgroundColor: 'transparent', pointRadius: 0, borderWidth: 2, tension: .15, spanGaps: true};
@@ -1095,8 +1092,9 @@ function loadRecordingsFromStorage() {
     const data = localStorage.getItem(RECORDINGS_KEY);
     if (data) {
       allRecordings = JSON.parse(data);
-      generateReportsTabs();
     }
+    // Always render Reports UI (Tools tile) even when there are no recordings
+    if (typeof generateReportsTabs === 'function') generateReportsTabs();
   } catch (e) { console.warn('Failed to load recordings:', e); }
 }
 
