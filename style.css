@@ -81,6 +81,16 @@ margin-top: 32px;
 .leaflet-container{flex:1 1 auto;width:100%!important;height:100%!important;background:var(--leaflet-bg)}
 .leaflet-container{background:var(--leaflet-bg)}
 
+/* Modal (generic) */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal-dialog{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:0 8px 40px rgba(0,0,0,.35);width:min(680px, 92vw);max-height:85vh;display:flex;flex-direction:column}
+.modal-header{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border)}
+.modal-title{font-weight:700}
+.modal-close{background:var(--btn);border:1px solid var(--border);border-radius:10px;padding:6px 10px;cursor:pointer}
+.modal-content{padding:14px;overflow:auto}
+.modal-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
+.modal-item{padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--btn);cursor:pointer;text-align:left}
+
 /* Densities */
 .dgrid{display:grid;grid-template-columns:1fr;gap: var(--gap);margin-top: var(--gap)}
 .dens-wrap{position:relative;height:200px;border:1px solid var(--border);border-radius:8px;padding:6px 6px 4px 6px;background:var(--input);overflow:hidden}

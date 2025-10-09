@@ -99,8 +99,9 @@ function drawKDEMulti(canvasId, kdeData, min, max, n, factor, label, logKDE, col
     let ys = logKDE ? kdeOnGridLogBack(data, xs, factor) : kdeOnGridLogBackShift(data, xs, factor);
     ys = ys.map(y=>y*100); // direct KDE percentage
     const storedUnit = window.unitSettings?.[unit] || {};
+    const customLabel = kdeData[unit] && typeof kdeData[unit].label === 'string' && kdeData[unit].label.trim() ? kdeData[unit].label.trim() : null;
     return {
-      label: storedUnit.customName || unit,
+      label: customLabel || storedUnit.customName || unit,
       data: ys,
       borderColor: colorMap[unit] || COLORS_BASE[0],
       backgroundColor: (colorMap[unit] || COLORS_BASE[0]) + '33',

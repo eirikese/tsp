@@ -1,15 +1,23 @@
 // Generate Reports tab subtabs and content
 function generateReportsTabs() {
-  const tabsEl = document.getElementById('reportsTabs');
-  const contentEl = document.getElementById('reportsContent');
+  const tabsEl = document.getElementById('reportSelectButtons');
+  const metaEl = document.getElementById('reportSelectMeta');
+  const contentEl = document.getElementById('reportsMain');
   const actionsEl = document.getElementById('reportsActions');
   if (!tabsEl || !contentEl) return;
   tabsEl.innerHTML = '';
+  if (metaEl) metaEl.innerHTML = '';
   contentEl.innerHTML = '';
   if (actionsEl) actionsEl.innerHTML = '';
+  // Remove any lingering athlete chooser (legacy inline) or modal
+  const _oldChooser = document.getElementById('singleAthleteChooser');
+  if (_oldChooser && _oldChooser.parentElement) { try { _oldChooser.remove(); } catch{} }
+  closeAthleteModal();
 
-  // Prepare Import CSV controls (appended later after buttons)
-  // Hidden file input (single file)
+  // Ensure single-athlete mode state container
+  if (!window._singleAthleteMode) window._singleAthleteMode = { active: false, athleteId: null, selected: [] };
+
+  // Prepare Import CSV controls
   const _importFileInput = document.createElement('input');
   _importFileInput.type = 'file';
   _importFileInput.accept = '.csv,text/csv';
@@ -27,9 +35,7 @@ function generateReportsTabs() {
       allRecordings.push(rec);
       if (typeof saveRecordingsToStorage === 'function') saveRecordingsToStorage();
       generateReportsTabs();
-      if (rec && rec.id) {
-        setTimeout(()=>{ try{ showReportFor(rec.id); }catch{} }, 0);
-      }
+      if (rec && rec.id) setTimeout(()=>{ try{ showReportFor(rec.id); }catch{} }, 0);
     }catch(err){
       console.warn('CSV import failed:', err);
       contentEl.innerHTML = '<div class="small">CSV import failed.</div>';
@@ -37,7 +43,6 @@ function generateReportsTabs() {
       e.target.value = '';
     }
   });
-  // Attach hidden input to actions container for click support
   (actionsEl || tabsEl).appendChild(_importFileInput);
   const _importBtn = document.createElement('button');
   _importBtn.textContent = 'Import CSV';
@@ -55,12 +60,10 @@ function generateReportsTabs() {
       if (!activeBtn) return;
       const recId = activeBtn.dataset.recId;
       const idx = allRecordings.findIndex(r => r.id === recId);
-      if (idx !== -1) {
-        if (confirm('Delete this report?')) {
-          allRecordings.splice(idx, 1);
-          saveRecordingsToStorage();
-          generateReportsTabs();
-        }
+      if (idx !== -1 && confirm('Delete this report?')) {
+        allRecordings.splice(idx, 1);
+        saveRecordingsToStorage();
+        generateReportsTabs();
       }
     };
     actionsEl.appendChild(delBtn);
@@ -121,18 +124,53 @@ function generateReportsTabs() {
     actionsEl.appendChild(dlAllBtn);
 
     // Import CSV
-    const importBtn = _importBtn; importBtn.className = 'small';
-    actionsEl.appendChild(importBtn);
+    actionsEl.appendChild(_importBtn);
+
+    // Single athlete selection or exit
+    const isSingle = !!window._singleAthleteMode.active;
+    if (!isSingle) {
+      const singleBtn = document.createElement('button');
+      singleBtn.textContent = 'Select single athlete';
+      singleBtn.className = 'small';
+  singleBtn.onclick = () => openAthleteModal();
+      actionsEl.appendChild(singleBtn);
+    } else {
+      const exitBtn = document.createElement('button');
+      exitBtn.textContent = 'Exit single athlete';
+      exitBtn.className = 'small';
+      // Style as blue primary
+      exitBtn.style.background = 'var(--accent)';
+      exitBtn.style.borderColor = 'var(--accent)';
+      exitBtn.style.color = '#fff';
+      exitBtn.onclick = () => {
+        window._singleAthleteMode = { active:false, athleteId:null, selected:[] };
+        closeAthleteModal();
+        generateReportsTabs();
+      };
+      actionsEl.appendChild(exitBtn);
+      const who = document.createElement('span');
+      who.className = 'small';
+      who.style.marginLeft = '8px';
+      who.textContent = `Athlete: ${getAthleteDisplayName(window._singleAthleteMode.athleteId)}`;
+      actionsEl.appendChild(who);
+    }
   }
 
   if (allRecordings.length === 0) {
     contentEl.innerHTML = '<div class="small">No recordings yet. Use "Import CSV" to load a past session or finish a recording to see reports.</div>';
     return;
   }
+
+  if (window._singleAthleteMode.active && window._singleAthleteMode.athleteId) {
+    tabsEl.style.display = 'none';
+    renderSingleAthleteView(contentEl, window._singleAthleteMode.athleteId, window._singleAthleteMode.selected);
+    return;
+  }
+
+  tabsEl.style.display = '';
   allRecordings.forEach((rec, idx) => {
     const btn = document.createElement('button');
     btn.className = 'tabbtn' + (idx === allRecordings.length-1 ? ' active' : '');
-    // Use custom label if set, else format start time as HH:MM:SS
     let label = rec.label && rec.label.trim() ? rec.label : `Recording ${idx+1}`;
     if (!rec.label && rec.startedAt) {
       const d = new Date(rec.startedAt);
@@ -148,38 +186,14 @@ function generateReportsTabs() {
     btn.onclick = () => showReportFor(rec.id);
     tabsEl.appendChild(btn);
   });
-  // Actions row now lives in reportsActions; tabsEl only holds recording tabs
-  // Show latest by default
   showReportFor(allRecordings[allRecordings.length-1].id);
 }
 
-// Parse a CSV text (exported by this app or similar) into a recording object
 function parseCsvTextToRecording(csvText, fileName='import.csv'){
   if (!csvText || typeof csvText !== 'string') return null;
   const lines = csvText.replace(/\r\n?/g, '\n').split('\n').filter(l=>l.trim().length>0);
   if (lines.length === 0) return null;
-
-  // Find header (first line that looks like comma-separated with at least unit/time fields)
-  let headerLineIndex = -1;
-  for (let i=0;i<Math.min(10, lines.length); i++){
-    const l = lines[i].trim();
-    if (!l.includes(',')) continue;
-    const lower = l.toLowerCase();
-    if (lower.includes('unit') || lower.includes('unit_id') || lower.includes('timestamp') || lower.includes('roll')) {
-      headerLineIndex = i; break;
-    }
-  }
-  if (headerLineIndex === -1) return null;
-
-  const header = lines[headerLineIndex].split(',').map(h=>h.trim());
-  const idx = (nameVariants) => {
-    for (const n of nameVariants) {
-      const j = header.findIndex(h => h.toLowerCase() === n.toLowerCase());
-      if (j !== -1) return j;
-    }
-    return -1;
-  };
-  const cUnit = idx(['unit_id','unit','athlete_id']);
+  // parsing continues...
   const cAthlete = idx(['athlete','athlete_name']);
   const cTsMs = idx(['timestamp_ms','ts_ms','time_ms']);
   const cIso = idx(['iso_time','iso','time_iso']);
@@ -293,7 +307,7 @@ function showReportFor(recId) {
   const rec = allRecordings.find(r => r.id === recId);
   if (!rec) return;
   // Highlight active subtab
-  document.querySelectorAll('#reportsTabs .tabbtn').forEach(btn => {
+  document.querySelectorAll('#reportSelectButtons .tabbtn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.recId === recId);
   });
   // Show stats and a box with roll/pitch distribs
@@ -336,16 +350,34 @@ function showReportFor(recId) {
       (rec.windAtStart && Number.isFinite(rec.windAtStart.direction))
     )
   );
-  let html = `<div class="small" style="margin-bottom:16px;">Recording started: ${started.toLocaleString()}<br>Samples: ${rec.rows.length}${windLabel?` — ${windLabel}`:''}</div>`;
-  // Athlete show/hide buttons above stats
-  html += `<div class="card" style="margin-bottom:16px;padding:12px 16px 8px 16px;max-width:600px;">
-    <div style="font-weight:700;margin-bottom:8px;">Show/hide athletes:</div>
-    <div id="report-athlete-show" style="display:flex;gap:12px;flex-wrap:wrap;">`;
-  unitIds.forEach(id => {
-    const color = colorMap[id];
-    html += `<button class="small" data-athlete="${id}" style="background:${rec._athleteShow[id] ? color : '#eee'};color:${rec._athleteShow[id] ? '#fff':'#333'};border-radius:6px;padding:2px 10px 2px 10px;min-width:60px;cursor:pointer;">${rec._athleteShow[id] ? 'Hide' : 'Show'} ${window.unitSettings[id]?.name || id}</button>`;
-  });
-  html += `</div></div>`;
+  // Update meta tile with started/samples and wind
+  const metaEl = document.getElementById('reportSelectMeta');
+  if (metaEl) metaEl.innerHTML = `Recording started: ${started.toLocaleString()}<br>Samples: ${rec.rows.length}${windLabel?` — ${windLabel}`:''}`;
+  let html = ``;
+  // Render show/hide athlete buttons in the Select Report tile
+  const shEl = document.getElementById('report-athlete-show');
+  if (shEl) {
+    shEl.innerHTML = '';
+    unitIds.forEach(id => {
+      const btn = document.createElement('button');
+      btn.className = 'small';
+      btn.setAttribute('data-athlete', id);
+      const color = colorMap[id];
+      const isShown = !!rec._athleteShow[id];
+      btn.textContent = `${isShown ? 'Hide' : 'Show'} ${window.unitSettings[id]?.name || id}`;
+      btn.style.background = isShown ? color : '#eee';
+      btn.style.color = isShown ? '#fff' : '#333';
+      btn.style.borderRadius = '6px';
+      btn.style.padding = '2px 10px';
+      btn.style.minWidth = '60px';
+      btn.style.cursor = 'pointer';
+      btn.onclick = () => {
+        rec._athleteShow[id] = !rec._athleteShow[id];
+        showReportFor(recId);
+      };
+      shEl.appendChild(btn);
+    });
+  }
   // Stats tiles, one per athlete, only if shown
   html += `<div id="report-athlete-stats" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">`;
   // Use device-provided SOG/Heading (recorded), not distance-derived
@@ -483,7 +515,7 @@ function showReportFor(recId) {
       ` : ''}
     </div>
   `;
-  document.getElementById('reportsContent').innerHTML = html;
+  document.getElementById('reportsMain').innerHTML = html;
   // Draw the distribs and handle show/hide
   setTimeout(() => {
   // Only include shown athletes
@@ -865,6 +897,225 @@ function showReportFor(recId) {
 // make available to other modules
 window.generateReportsTabs = generateReportsTabs;
 window.showReportFor = showReportFor;
+
+// ---------- Single Athlete Mode ----------
+function getAthleteDisplayName(unitId){
+  if (!unitId) return 'Unknown';
+  window.unitSettings = JSON.parse(localStorage.getItem('unitColors') || '{}');
+  const u = window.unitSettings[unitId];
+  return (u && (u.name || u.customName)) ? (u.name || u.customName) : unitId;
+}
+
+// ---- Modal helpers for athlete chooser ----
+function openAthleteModal(){
+  // If already open, do nothing
+  if (document.getElementById('athleteModalOverlay')) return;
+  // Build unique list of athletes across all recordings
+  const set = new Set();
+  allRecordings.forEach(rec => { (rec.rows||[]).forEach(r => { if (r && r.unit) set.add(r.unit); }); });
+  const ids = Array.from(set);
+  // Overlay
+  const overlay = document.createElement('div');
+  overlay.id = 'athleteModalOverlay';
+  overlay.className = 'modal-overlay';
+  overlay.addEventListener('click', (e)=>{ if (e.target === overlay) closeAthleteModal(); });
+  // Dialog
+  const dialog = document.createElement('div');
+  dialog.className = 'modal-dialog';
+  dialog.setAttribute('role','dialog');
+  dialog.setAttribute('aria-modal','true');
+  // Header
+  const header = document.createElement('div');
+  header.className = 'modal-header';
+  const title = document.createElement('div'); title.textContent = 'Select athlete'; title.className = 'modal-title';
+  const closeBtn = document.createElement('button'); closeBtn.className = 'modal-close'; closeBtn.innerHTML = '✕'; closeBtn.onclick = closeAthleteModal;
+  header.appendChild(title); header.appendChild(closeBtn);
+  // Content list
+  const content = document.createElement('div'); content.className = 'modal-content';
+  const withNames = ids.map(id => ({id, name: getAthleteDisplayName(id)})).sort((a,b)=>a.name.localeCompare(b.name));
+  if (withNames.length === 0) {
+    const empty = document.createElement('div'); empty.className = 'small'; empty.textContent = 'No athletes available in current recordings.'; content.appendChild(empty);
+  } else {
+    const list = document.createElement('div');
+    list.className = 'modal-list';
+    withNames.forEach(({id, name}) => {
+      const b = document.createElement('button');
+      b.className = 'modal-item'; b.textContent = name; b.title = id;
+      b.onclick = () => {
+        const recs = allRecordings.filter(rec => (rec.rows||[]).some(r => r.unit === id));
+        const defaultSel = recs.length ? [recs[recs.length-1].id] : [];
+        window._singleAthleteMode = { active: true, athleteId: id, selected: defaultSel };
+        closeAthleteModal();
+        generateReportsTabs();
+      };
+      list.appendChild(b);
+    });
+    content.appendChild(list);
+  }
+  dialog.appendChild(header); dialog.appendChild(content);
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+  // Focus first item if exists
+  setTimeout(()=>{
+    const first = overlay.querySelector('.modal-item'); if (first) first.focus();
+  }, 0);
+}
+
+function closeAthleteModal(){
+  const overlay = document.getElementById('athleteModalOverlay');
+  if (overlay && overlay.parentElement) { try { overlay.remove(); } catch{} }
+}
+
+function renderSingleAthleteView(contentEl, athleteId, selected){
+  // Build recordings list UI with checkboxes for those containing the athlete
+  const candidateRecs = allRecordings.filter(rec => (rec.rows||[]).some(r => r.unit === athleteId));
+  let selectedSet = new Set(Array.isArray(selected) ? selected : []);
+  if (selectedSet.size === 0 && candidateRecs.length) selectedSet = new Set([candidateRecs[candidateRecs.length-1].id]);
+  window._singleAthleteMode.selected = Array.from(selectedSet);
+  const hdr = document.createElement('div');
+  hdr.className = 'card';
+  hdr.style.marginBottom = '12px';
+  hdr.style.padding = '12px 16px';
+  const athleteName = getAthleteDisplayName(athleteId);
+  hdr.innerHTML = `<div style="font-weight:700;margin-bottom:8px;">Single Athlete: ${athleteName}</div>`;
+  const checks = document.createElement('div');
+  checks.style.display = 'flex'; checks.style.flexWrap = 'wrap'; checks.style.gap = '12px';
+  candidateRecs.forEach((rec, idx) => {
+    const id = rec.id;
+    const label = rec.label && rec.label.trim() ? rec.label : (rec.startedAt? new Date(rec.startedAt).toLocaleTimeString() : `Recording ${idx+1}`);
+    const lab = document.createElement('label'); lab.style.display = 'flex'; lab.style.alignItems = 'center'; lab.style.gap = '6px';
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = selectedSet.has(id);
+    cb.onchange = () => { if (cb.checked) selectedSet.add(id); else selectedSet.delete(id); window._singleAthleteMode.selected = Array.from(selectedSet); renderSingleAthleteCharts(athleteId, Array.from(selectedSet)); };
+    const span = document.createElement('span'); span.textContent = label;
+    lab.appendChild(cb); lab.appendChild(span); checks.appendChild(lab);
+  });
+  hdr.appendChild(checks);
+  contentEl.appendChild(hdr);
+  // charts container
+  const charts = document.createElement('div'); charts.id = 'singleAthleteCharts'; contentEl.appendChild(charts);
+  renderSingleAthleteCharts(athleteId, Array.from(selectedSet));
+}
+
+function renderSingleAthleteCharts(athleteId, recIds){
+  const container = document.getElementById('singleAthleteCharts'); if (!container) return;
+  container.innerHTML = '';
+  if (!Array.isArray(recIds) || recIds.length === 0) { container.innerHTML = '<div class="small">Select one or more recordings to compare.</div>'; return; }
+  // Build filtered rows per recording
+  const byRec = {};
+  const colorMap = {};
+  const cols = (typeof COLORS_BASE !== 'undefined' ? COLORS_BASE : ['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b']);
+  recIds.forEach((rid, i) => {
+    const rec = allRecordings.find(r => r.id === rid); if (!rec) return;
+    byRec[rid] = (rec.rows||[]).filter(r => r.unit === athleteId);
+    colorMap[rid] = cols[i % cols.length];
+  });
+  const plotW = 900, plotH = 200;
+  // Build HTML structure similar to normal report
+  let html = `
+    <div class="reports-tiles-grid">
+      <div class="card grow" style="padding:24px 20px;display:flex;flex-direction:column;gap:12px;min-height:${plotH+60}px;">
+        <div style='font-weight:700;margin-bottom:4px;text-align:center;'>Heel Distribution — ${getAthleteDisplayName(athleteId)}</div>
+        <div class="plot"><canvas id="sa-kde-roll" width="${plotW}" height="${plotH}" style="width:100%;height:100%;max-width:100%;max-height:100%;"></canvas></div>
+      </div>
+      <div class="card grow" style="padding:24px 20px;display:flex;flex-direction:column;gap:12px;min-height:${plotH+60}px;">
+        <div style='font-weight:700;margin-bottom:4px;text-align:center;'>Heel Frequency Distribution — ${getAthleteDisplayName(athleteId)}</div>
+        <div class="plot"><canvas id="sa-kde-freq-roll" width="${plotW}" height="${plotH}" style="width:100%;height:100%;max-width:100%;max-height:100%;"></canvas></div>
+      </div>
+      <div class="card grow" style="padding:24px 20px;display:flex;flex-direction:column;gap:12px;min-height:${plotH+60}px;">
+        <div style='font-weight:700;margin-bottom:4px;text-align:center;'>SOG Histogram (kt) — ${getAthleteDisplayName(athleteId)}</div>
+        <div class="plot"><canvas id="sa-hist-sog" width="${plotW}" height="${plotH}" style="width:100%;height:100%;max-width:100%;max-height:100%;"></canvas></div>
+      </div>
+      <div class="card grow" style="padding:24px 20px;display:flex;flex-direction:column;gap:12px;min-height:${plotH+60}px;">
+        <div style='font-weight:700;margin-bottom:4px;text-align:center;'>TWA Distribution (°) — ${getAthleteDisplayName(athleteId)}</div>
+        <div class="plot"><canvas id="sa-kde-twa" width="${plotW}" height="${plotH}" style="width:100%;height:100%;max-width:100%;max-height:100%;"></canvas></div>
+      </div>
+    </div>`;
+  container.innerHTML = html;
+  // Prepare KDE data
+  const xsRoll = linspace(DEG_RANGE.min, DEG_RANGE.max, DEG_RANGE.gridCnt);
+  const xsFreq = linspace(FREQ_RANGE.min, FREQ_RANGE.max, FREQ_RANGE.gridCnt);
+  // Helper to produce recording label like normal tabs
+  function recLabel(rid){
+    const rec = allRecordings.find(r => r.id === rid); if (!rec) return rid;
+    if (rec.label && rec.label.trim()) return rec.label;
+    if (rec.startedAt) {
+      const d = new Date(rec.startedAt);
+      const h = String(d.getHours()).padStart(2,'0');
+      const m = String(d.getMinutes()).padStart(2,'0');
+      const s = String(d.getSeconds()).padStart(2,'0');
+      return `${h}:${m}:${s}`;
+    }
+    return rid;
+  }
+  // Heel KDE
+  const kdeRoll = {};
+  Object.entries(byRec).forEach(([rid, arr]) => {
+    const rolls = arr.map(r => r.roll).filter(Number.isFinite);
+    kdeRoll[rid] = { data: rolls, label: recLabel(rid) };
+  });
+  let rollMax = 0; Object.entries(kdeRoll).forEach(([rid,d])=>{ if(d.data&&d.data.length){ const ys = kdeOnGridLogBackShift(d.data, xsRoll, getKdeFactorAngles(true)).map(y=>y*100); rollMax=Math.max(rollMax, ...ys);} });
+  const rollPitchMax = Math.max(10, rollMax) * 1.05;
+  drawKDEMulti('sa-kde-roll', kdeRoll, DEG_RANGE.min, DEG_RANGE.max, DEG_RANGE.gridCnt, getKdeFactorAngles(true), 'Heel (°)', false, colorMap, false, rollPitchMax, recIds.map(rid => labelForRec(rid)));
+  // Heel Frequency KDE
+  const kdeFreq = {};
+  Object.entries(byRec).forEach(([rid, arr]) => {
+    const rolls = arr.map(r => r.roll).filter(Number.isFinite);
+    const times = arr.map(r => r.t).filter(Number.isFinite);
+    const peaks = detectPeaks(rolls, times, 300, 5.0);
+    kdeFreq[rid] = { data: freqSamplesFromPeaks(peaks), label: recLabel(rid) };
+  });
+  let freqMax = 0; Object.entries(kdeFreq).forEach(([rid,d])=>{ if(d.data&&d.data.length){ const ys = kdeOnGridLogBack(d.data, xsFreq, getKdeFactorFreq()).map(y=>y*100); freqMax=Math.max(freqMax, ...ys);} });
+  freqMax = Math.max(10, freqMax) * 1.2;
+  drawKDEMulti('sa-kde-freq-roll', kdeFreq, FREQ_RANGE.min, FREQ_RANGE.max, FREQ_RANGE.gridCnt, getKdeFactorFreq(), 'Freq (heel)', false, colorMap, false, freqMax, recIds.map(rid => labelForRec(rid)));
+  // SOG Histogram
+  (function(){
+    const kdeData = {}; let globalMax = 0;
+    Object.entries(byRec).forEach(([rid, arr]) => {
+      const sogs = [];
+      for (let i=0;i<arr.length;i++){ const r = arr[i]; if (typeof r.sog_mps === 'number' && Number.isFinite(r.sog_mps) && r.sog_mps>0){ const kt = r.sog_mps*(window.KNOTS_PER_MPS||1.94384449); sogs.push(kt); if (kt>globalMax) globalMax=kt; } }
+      kdeData[rid] = { data: sogs, label: recLabel(rid) };
+    });
+    let maxS = Math.max(2, globalMax); maxS = Math.ceil(maxS/2)*2;
+    const xs = linspace(0.01, maxS, 160);
+    let sogYMax = 0; Object.entries(kdeData).forEach(([rid,d])=>{ if(d.data&&d.data.length){ const ys = kdeOnGridLogBack(d.data, xs, getKdeFactorFreq()).map(y=>y*100); sogYMax=Math.max(sogYMax, ...ys);} });
+    sogYMax = Math.max(10, sogYMax)*1.05;
+    drawKDEMulti('sa-hist-sog', kdeData, 0.01, maxS, 160, getKdeFactorFreq(), 'SOG (kt)', true, colorMap, false, sogYMax, recIds.map(rid => labelForRec(rid)));
+  })();
+  // TWA KDE per recording using that rec's recorded wind
+  (function(){
+    const kdeTwa = {}; let hasAny = false;
+    const xsTWA = linspace(-180, 180, DEG_RANGE.gridCnt);
+    recIds.forEach(rid => {
+      const rec = allRecordings.find(r => r.id === rid); if (!rec) return;
+      const arr = byRec[rid] || [];
+      const heads = arr.map(r => (typeof r.heading_deg === 'number' ? r.heading_deg : null)).filter(Number.isFinite);
+      const recWindDir = (rec.windAtEnd && Number.isFinite(rec.windAtEnd.direction)) ? rec.windAtEnd.direction
+                        : (rec.windAtStart && Number.isFinite(rec.windAtStart.direction)) ? rec.windAtStart.direction
+                        : null;
+      if (Number.isFinite(recWindDir) && heads.length){
+        const angleDiff = (window.windManual && typeof window.windManual.angleDiffDeg === 'function') ? window.windManual.angleDiffDeg : ((a,b)=>a-b);
+        const twas = heads.map(h => angleDiff(recWindDir, h)).filter(Number.isFinite);
+        kdeTwa[rid] = { data: twas, label: recLabel(rid) };
+        hasAny = hasAny || twas.length>0;
+      } else {
+        kdeTwa[rid] = { data: [], label: recLabel(rid) };
+      }
+    });
+    // If none has wind/TWA, hide the card
+    if (!hasAny) {
+      const el = document.getElementById('sa-kde-twa'); if (el) { const card = el.closest && el.closest('.card'); if (card) card.style.display='none'; }
+      return;
+    }
+    drawKDEMulti('sa-kde-twa', kdeTwa, -180, 180, DEG_RANGE.gridCnt, getKdeFactorAngles(true), 'TWA (°)', false, colorMap, false, undefined, recIds.map(rid => labelForRec(rid)));
+  })();
+
+  function labelForRec(rid){
+    const rec = allRecordings.find(r => r.id === rid); if (!rec) return rid;
+    if (rec.label && rec.label.trim()) return rec.label;
+    if (rec.startedAt) { const d = new Date(rec.startedAt); const hh = String(d.getHours()).padStart(2,'0'); const mm=String(d.getMinutes()).padStart(2,'0'); const ss=String(d.getSeconds()).padStart(2,'0'); return `${hh}:${mm}:${ss}`; }
+    return rid;
+  }
+}
 
 // ------- CSV helpers (Reports) -------
 function fmt2(n){ return String(n).padStart(2,'0'); }
