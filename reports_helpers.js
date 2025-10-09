@@ -51,94 +51,12 @@ function generateReportsTabs() {
 
   // Build actions row (top)
   if (actionsEl) {
-    // Delete Selected
-    const delBtn = document.createElement('button');
-    delBtn.textContent = 'Delete Selected Report';
-    delBtn.className = 'small';
-    delBtn.onclick = function() {
-      const activeBtn = tabsEl.querySelector('.tabbtn.active');
-      if (!activeBtn) return;
-      const recId = activeBtn.dataset.recId;
-      const idx = allRecordings.findIndex(r => r.id === recId);
-      if (idx !== -1 && confirm('Delete this report?')) {
-        allRecordings.splice(idx, 1);
-        saveRecordingsToStorage();
-        generateReportsTabs();
-      }
-    };
-    actionsEl.appendChild(delBtn);
-
-    // Rename Selected
-    const renBtn = document.createElement('button');
-    renBtn.textContent = 'Rename Selected Report';
-    renBtn.className = 'small';
-    renBtn.onclick = function() {
-      const activeBtn = tabsEl.querySelector('.tabbtn.active');
-      if (!activeBtn) return;
-      const recId = activeBtn.dataset.recId;
-      const rec = allRecordings.find(r => r.id === recId);
-      if (rec) {
-        const newName = prompt('Enter new name for this report:', rec.label || '');
-        if (newName && newName.trim()) {
-          rec.label = newName.trim();
-          saveRecordingsToStorage();
-          generateReportsTabs();
-        }
-      }
-    };
-    actionsEl.appendChild(renBtn);
-
-    // Download CSV (selected)
-    const dlSelectedBtn = document.createElement('button');
-    dlSelectedBtn.textContent = 'Download CSV (selected)';
-    dlSelectedBtn.className = 'small';
-    dlSelectedBtn.onclick = function(){
-      const activeBtn = tabsEl.querySelector('.tabbtn.active');
-      if(!activeBtn) return; const recId = activeBtn.dataset.recId;
-      const rec = allRecordings.find(r=>r.id===recId); if(!rec) return;
-      try{ const csv = buildCsvForRecording(rec); triggerCsvDownload(csv, makeCsvFilename(rec)); }catch(e){ console.warn('CSV build failed', e); }
-    };
-    actionsEl.appendChild(dlSelectedBtn);
-
-    // Download CSV (all)
-    const dlAllBtn = document.createElement('button');
-    dlAllBtn.textContent = 'Download CSV (all)';
-    dlAllBtn.className = 'small';
-    dlAllBtn.title = 'Downloads each CSV separately. Your browser may ask to allow multiple downloads.';
-    dlAllBtn.onclick = function(){
-      if(!Array.isArray(allRecordings) || allRecordings.length===0) return;
-      let i = 0;
-      const next = () => {
-        if (i >= allRecordings.length) return;
-        try{
-          const rec = allRecordings[i];
-          const csv = buildCsvForRecording(rec);
-          const fname = makeCsvFilename(rec);
-          triggerCsvDownload(csv, fname);
-        }catch(e){ console.warn('CSV download failed', e); }
-        i++;
-        setTimeout(next, 250);
-      };
-      next();
-    };
-    actionsEl.appendChild(dlAllBtn);
-
-    // Import CSV
-    actionsEl.appendChild(_importBtn);
-
-    // Single athlete selection or exit
     const isSingle = !!window._singleAthleteMode.active;
-    if (!isSingle) {
-      const singleBtn = document.createElement('button');
-      singleBtn.textContent = 'Select single athlete';
-      singleBtn.className = 'small';
-  singleBtn.onclick = () => openAthleteModal();
-      actionsEl.appendChild(singleBtn);
-    } else {
+    if (isSingle) {
+      // In single athlete mode: hide all other tools, show only Exit and athlete label
       const exitBtn = document.createElement('button');
       exitBtn.textContent = 'Exit single athlete';
       exitBtn.className = 'small';
-      // Style as blue primary
       exitBtn.style.background = 'var(--accent)';
       exitBtn.style.borderColor = 'var(--accent)';
       exitBtn.style.color = '#fff';
@@ -153,6 +71,83 @@ function generateReportsTabs() {
       who.style.marginLeft = '8px';
       who.textContent = `Athlete: ${getAthleteDisplayName(window._singleAthleteMode.athleteId)}`;
       actionsEl.appendChild(who);
+    } else {
+      // Normal mode: show full set of tools + single-athlete entry point
+      const delBtn = document.createElement('button');
+      delBtn.textContent = 'Delete Selected Report';
+      delBtn.className = 'small';
+      delBtn.onclick = function() {
+        const activeBtn = tabsEl.querySelector('.tabbtn.active');
+        if (!activeBtn) return;
+        const recId = activeBtn.dataset.recId;
+        const idx = allRecordings.findIndex(r => r.id === recId);
+        if (idx !== -1 && confirm('Delete this report?')) {
+          allRecordings.splice(idx, 1);
+          saveRecordingsToStorage();
+          generateReportsTabs();
+        }
+      };
+      actionsEl.appendChild(delBtn);
+
+      const renBtn = document.createElement('button');
+      renBtn.textContent = 'Rename Selected Report';
+      renBtn.className = 'small';
+      renBtn.onclick = function() {
+        const activeBtn = tabsEl.querySelector('.tabbtn.active');
+        if (!activeBtn) return;
+        const recId = activeBtn.dataset.recId;
+        const rec = allRecordings.find(r => r.id === recId);
+        if (rec) {
+          const newName = prompt('Enter new name for this report:', rec.label || '');
+          if (newName && newName.trim()) {
+            rec.label = newName.trim();
+            saveRecordingsToStorage();
+            generateReportsTabs();
+          }
+        }
+      };
+      actionsEl.appendChild(renBtn);
+
+      const dlSelectedBtn = document.createElement('button');
+      dlSelectedBtn.textContent = 'Download CSV (selected)';
+      dlSelectedBtn.className = 'small';
+      dlSelectedBtn.onclick = function(){
+        const activeBtn = tabsEl.querySelector('.tabbtn.active');
+        if(!activeBtn) return; const recId = activeBtn.dataset.recId;
+        const rec = allRecordings.find(r=>r.id===recId); if(!rec) return;
+        try{ const csv = buildCsvForRecording(rec); triggerCsvDownload(csv, makeCsvFilename(rec)); }catch(e){ console.warn('CSV build failed', e); }
+      };
+      actionsEl.appendChild(dlSelectedBtn);
+
+      const dlAllBtn = document.createElement('button');
+      dlAllBtn.textContent = 'Download CSV (all)';
+      dlAllBtn.className = 'small';
+      dlAllBtn.title = 'Downloads each CSV separately. Your browser may ask to allow multiple downloads.';
+      dlAllBtn.onclick = function(){
+        if(!Array.isArray(allRecordings) || allRecordings.length===0) return;
+        let i = 0;
+        const next = () => {
+          if (i >= allRecordings.length) return;
+          try{
+            const rec = allRecordings[i];
+            const csv = buildCsvForRecording(rec);
+            const fname = makeCsvFilename(rec);
+            triggerCsvDownload(csv, fname);
+          }catch(e){ console.warn('CSV download failed', e); }
+          i++;
+          setTimeout(next, 250);
+        };
+        next();
+      };
+      actionsEl.appendChild(dlAllBtn);
+
+      actionsEl.appendChild(_importBtn);
+
+      const singleBtn = document.createElement('button');
+      singleBtn.textContent = 'Select single athlete';
+      singleBtn.className = 'small';
+      singleBtn.onclick = () => openAthleteModal();
+      actionsEl.appendChild(singleBtn);
     }
   }
 
@@ -270,7 +265,13 @@ function parseCsvTextToRecording(csvText, fileName='import.csv'){
   const cLat = idx(['lat','latitude']);
   const cLon = idx(['lon','lng','longitude']);
   const cGnssMs = idx(['gnss_ms']);
-  const cGnssIso = idx(['gnss_iso']);
+  // Support gps_utc alias for gnss_iso
+  const cGnssIso = (function(){
+    const i1 = idx(['gnss_iso']);
+    if (i1 !== -1) return i1;
+    const i2 = idx(['gps_utc']);
+    return i2;
+  })();
   const cAx = idx(['ax']);
   const cAy = idx(['ay']);
   const cAz = idx(['az']);
@@ -344,8 +345,8 @@ function parseCsvTextToRecording(csvText, fileName='import.csv'){
     const pitch = parseNum(cells[cPitch]);
     const lat = parseNum(cells[cLat]);
     const lon = parseNum(cells[cLon]);
-    const gnss_ms = (cGnssMs!==-1 ? parseNum(cells[cGnssMs]) : null);
-    const gnss_iso = (cGnssIso!==-1 ? (cells[cGnssIso]||'').replace(/^"|"$/g,'') : '');
+  const gnss_ms = (cGnssMs!==-1 ? parseNum(cells[cGnssMs]) : null);
+  const gnss_iso = (cGnssIso!==-1 ? (cells[cGnssIso]||'').replace(/^"|"$/g,'') : '');
   const ax = (cAx!==-1 ? parseNum(cells[cAx]) : null);
   const ay = (cAy!==-1 ? parseNum(cells[cAy]) : null);
   const az = (cAz!==-1 ? parseNum(cells[cAz]) : null);
@@ -1107,6 +1108,68 @@ function renderSingleAthleteCharts(athleteId, recIds){
     colorMap[rid] = savedColors[rid];
   });
   const plotW = 900, plotH = 200;
+  // Build per-recording stats tiles (titles = selected tests)
+  function recLabelLocal(rid){
+    const rec = allRecordings.find(r => r.id === rid); if (!rec) return rid;
+    if (rec.label && rec.label.trim()) return rec.label;
+    if (rec.startedAt) {
+      const d = new Date(rec.startedAt);
+      const h = String(d.getHours()).padStart(2,'0');
+      const m = String(d.getMinutes()).padStart(2,'0');
+      const s = String(d.getSeconds()).padStart(2,'0');
+      return `${h}:${m}:${s}`;
+    }
+    return rid;
+  }
+  function meanSdMax(arr){
+    const a = arr.filter(Number.isFinite);
+    if (!a.length) return {mean:null, sd:null, max:null};
+    const mean = a.reduce((s,v)=>s+v,0)/a.length;
+    const sd = Math.sqrt(a.reduce((s,v)=>s+(v-mean)*(v-mean),0)/a.length);
+    const max = Math.max(...a);
+    return {mean, sd, max};
+  }
+  let statsHtml = `<div id="sa-stats" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">`;
+  recIds.forEach(rid => {
+    const arr = byRec[rid] || [];
+    const rolls = arr.map(r=>r.roll).filter(Number.isFinite);
+    const pitchs = arr.map(r=>r.pitch).filter(Number.isFinite);
+    const sogsKt = arr.map(r=> (typeof r.sog_mps==='number' && Number.isFinite(r.sog_mps)) ? r.sog_mps*(window.KNOTS_PER_MPS||1.94384449) : null).filter(Number.isFinite);
+    const heads = arr.map(r=> (typeof r.heading_deg==='number' ? r.heading_deg : null)).filter(Number.isFinite);
+    const rollStats = meanSdMax(rolls);
+    const pitchStats = meanSdMax(pitchs);
+    const sogStats = meanSdMax(sogsKt);
+    const headStats = meanSdMax(heads);
+    // TWA stats using this recording's saved wind (prefer end)
+    let twaStats = {mean:null, sd:null};
+    try{
+      const rec = allRecordings.find(r=>r.id===rid);
+      const recWindDir = (rec && rec.windAtEnd && Number.isFinite(rec.windAtEnd.direction)) ? rec.windAtEnd.direction
+                        : (rec && rec.windAtStart && Number.isFinite(rec.windAtStart.direction)) ? rec.windAtStart.direction
+                        : null;
+      if (Number.isFinite(recWindDir) && heads.length){
+        const angleDiff = (window.windManual && typeof window.windManual.angleDiffDeg==='function') ? window.windManual.angleDiffDeg : ((a,b)=>a-b);
+        const twas = heads.map(h=> angleDiff(recWindDir, h)).filter(Number.isFinite);
+        const s = meanSdMax(twas);
+        twaStats = { mean: s.mean, sd: s.sd };
+      }
+    }catch{}
+    const title = recLabelLocal(rid);
+    const c = colorMap[rid] || COLORS_BASE[0];
+    statsHtml += `
+    <div class="card half unitStats" style="--ucolor:${c};min-width:200px;max-width:400px;">
+      <div style="font-weight:700;margin-bottom:8px;"><span class="unitTag" style="background:${c}">${title}</span></div>
+      <div class="grid">
+        <div><div class="small">Avg Heel (°)</div><div class="num">${rollStats.mean!==null ? rollStats.mean.toFixed(1)+' ±'+rollStats.sd.toFixed(1)+'°' : '–'}</div></div>
+        <div><div class="small">Avg Trim (°)</div><div class="num">${pitchStats.mean!==null ? pitchStats.mean.toFixed(1)+' ±'+pitchStats.sd.toFixed(1)+'°' : '–'}</div></div>
+        <div><div class="small">Avg SOG (kt)</div><div class="num">${sogStats.mean!==null ? sogStats.mean.toFixed(1)+' ±'+sogStats.sd.toFixed(1) : '–'}</div></div>
+        <div><div class="small">Max SOG (kt)</div><div class="num">${sogStats.max!==null ? sogStats.max.toFixed(1) : '–'}</div></div>
+        <div><div class="small">TWA (°)</div><div class="num">${twaStats.mean!==null ? twaStats.mean.toFixed(1)+' ±'+(twaStats.sd??0).toFixed(1)+'°' : '–'}</div></div>
+        <div><div class="small">Heading (°)</div><div class="num">${headStats.mean!==null ? headStats.mean.toFixed(1)+' ±'+headStats.sd.toFixed(1)+'°' : '–'}</div></div>
+      </div>
+    </div>`;
+  });
+  statsHtml += `</div>`;
   // Build HTML structure similar to normal report
   let html = `
     <div class="reports-tiles-grid">
@@ -1127,7 +1190,7 @@ function renderSingleAthleteCharts(athleteId, recIds){
         <div class="plot"><canvas id="sa-kde-twa" width="${plotW}" height="${plotH}" style="width:100%;height:100%;max-width:100%;max-height:100%;"></canvas></div>
       </div>
     </div>`;
-  container.innerHTML = html;
+  container.innerHTML = statsHtml + html;
   // Prepare KDE data
   const xsRoll = linspace(DEG_RANGE.min, DEG_RANGE.max, DEG_RANGE.gridCnt);
   const xsFreq = linspace(FREQ_RANGE.min, FREQ_RANGE.max, FREQ_RANGE.gridCnt);
@@ -1227,8 +1290,8 @@ function triggerCsvDownload(csvText, filename){
   setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 }
 function buildCsvHeader(){
-  // Include optional sog_mps and heading_deg so imports preserve device speed/heading if present
-  return ['unit_id','athlete','timestamp_ms','iso_time','elapsed_s','seq','roll_deg','pitch_deg','lat','lon','gnss_ms','gnss_iso','sog_mps','heading_deg'].join(',');
+  // Include sog_mps, heading_deg and preserve GNSS timestamp fields. gps_utc duplicates gnss_iso for compatibility.
+  return ['unit_id','athlete','timestamp_ms','iso_time','elapsed_s','seq','roll_deg','pitch_deg','lat','lon','gnss_ms','gnss_iso','gps_utc','sog_mps','heading_deg'].join(',');
 }
 function buildCsvForRecording(rec){
   if(!rec || !Array.isArray(rec.rows)) return '';
@@ -1267,6 +1330,7 @@ function buildCsvForRecording(rec){
       (Number.isFinite(r.lat)?r.lat.toFixed(6):''),
       (Number.isFinite(r.lon)?r.lon.toFixed(6):''),
       (r.gnss_ms??''),
+      (r.gnss_iso?`"${r.gnss_iso.replace(/"/g,'""')}"`:'') ,
       (r.gnss_iso?`"${r.gnss_iso.replace(/"/g,'""')}"`:'') ,
       (Number.isFinite(r.sog_mps)?r.sog_mps.toFixed(3):''),
       (Number.isFinite(r.heading_deg)?r.heading_deg.toFixed(1):'')

@@ -1572,6 +1572,19 @@ function connect(){
 
       // record if active
       if(recActive) {
+        // Map gps_utc -> gnss_iso/gnss_ms for recording compatibility
+        let gps_iso = '';
+        let gps_ms = null;
+        try{
+          if (typeof d.gps_utc === 'string' && d.gps_utc.length) {
+            gps_iso = d.gps_utc;
+            const ms = Date.parse(d.gps_utc);
+            if (Number.isFinite(ms)) gps_ms = ms;
+          }
+          // Fall back to legacy fields if present
+          if (!gps_iso && typeof d.gnss_iso === 'string' && d.gnss_iso.length) gps_iso = d.gnss_iso;
+          if (gps_ms==null && typeof d.gnss_ms === 'number' && Number.isFinite(d.gnss_ms)) gps_ms = d.gnss_ms;
+        }catch{}
         recRows.push({
           unit,
           t,
@@ -1580,8 +1593,8 @@ function connect(){
           pitch: (typeof d.pitch_deg === 'number' ? d.pitch_deg : (typeof d.pitch === 'number' ? d.pitch : '')),
           lat: (hasFix ? lat : ''),
           lon: (hasFix ? lon : ''),
-          gnss_ms: d.gnss_ms ?? '',
-          gnss_iso: d.gnss_iso ?? '',
+          gnss_ms: (gps_ms!=null ? gps_ms : ''),
+          gnss_iso: (gps_iso || ''),
           sog_mps: (typeof d.sog_mps === 'number' ? d.sog_mps : ''),
           heading_deg: (typeof d.heading_deg === 'number' ? d.heading_deg : ''),
           ax: (typeof d.ax === 'number' ? d.ax : ''),
