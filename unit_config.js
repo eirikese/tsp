@@ -1,11 +1,11 @@
 // Athlete colors and configurations
 const COLORS_PALETTE = [
+  { name: 'Orange', value: '#ff9f1c' },
   { name: 'Blue', value: '#4cc9f0' },
+  { name: 'Purple', value: '#9b5de5' },
   { name: 'Gold', value: '#ffd166' },
   { name: 'Red', value: '#ef476f' },
   { name: 'Emerald', value: '#06d6a0' },
-  { name: 'Purple', value: '#9b5de5' },
-  { name: 'Orange', value: '#ff9f1c' },
   { name: 'Teal', value: '#00b4d8' },
   { name: 'Pink', value: '#ff70a6' }
 ];
@@ -184,3 +184,27 @@ window.loadUnitConfig = loadUnitConfig;
 window.COLORS_BASE = COLORS_BASE;
 window.COLORS_PALETTE = COLORS_PALETTE;
 window.UNIT_CONFIG_KEY = UNIT_CONFIG_KEY;
+
+// Return unit IDs in the Settings (Athlete Configuration) order.
+// Fallbacks: saved config key order, then discovered live order.
+function getConfigOrder() {
+  try {
+    // If Settings UI is present, prefer DOM row order
+    const container = document.getElementById('unitsConfig');
+    if (container) {
+      const rows = container.querySelectorAll('.unit-config-row');
+      if (rows && rows.length) {
+        return Array.from(rows).map(r => r.dataset.unit).filter(Boolean);
+      }
+    }
+    // Else, use saved config insertion order
+    const cfg = loadUnitConfig();
+    const ids = Object.keys(cfg);
+    if (ids && ids.length) return ids;
+  } catch {}
+  // Last resort: discovered live order or known units
+  if (Array.isArray(window.discoveredOrder) && window.discoveredOrder.length) return window.discoveredOrder.slice();
+  if (window.units) return Object.keys(window.units);
+  return [];
+}
+window.getConfigOrder = getConfigOrder;

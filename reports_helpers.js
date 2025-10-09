@@ -387,7 +387,19 @@ function showReportFor(recId) {
     if (!byUnit[r.unit]) byUnit[r.unit] = [];
     byUnit[r.unit].push(r);
   });
-  const unitIds = Object.keys(byUnit);
+  let unitIds = Object.keys(byUnit);
+  try{
+    const order = (typeof window.getConfigOrder==='function') ? window.getConfigOrder() : [];
+    if (order && order.length){
+      const pos = new Map(order.map((id,i)=>[id,i]));
+      unitIds.sort((a,b)=>{
+        const pa = pos.has(a)?pos.get(a):1e9;
+        const pb = pos.has(b)?pos.get(b):1e9;
+        if (pa!==pb) return pa-pb;
+        return a.localeCompare(b);
+      });
+    }
+  }catch{}
   // Get unit colors from localStorage
   window.unitSettings = JSON.parse(localStorage.getItem('unitColors') || '{}');
   const colorMap = {};

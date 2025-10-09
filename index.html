@@ -455,7 +455,14 @@ function applyNowVisibilityToUnit(u){
   const v = getNowVisibility();
   const root = u.nowElems?.roll && document.querySelector(`#now-roll-${u.originalName}`)?.closest('.grid');
   if(!root) return;
-  const show = (id, ok)=>{ const el = document.getElementById(id); if(!el) return; const tile = el.closest('div'); if(tile) tile.style.display = ok? '' : 'none'; };
+  // Hide/show the entire stat tile (label + value), not just the number
+  const show = (id, ok)=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    // The value element is a div.num; its parent is the wrapper that also contains the label
+    const tile = el.parentElement;
+    if(tile && tile.tagName === 'DIV') tile.style.display = ok ? '' : 'none';
+  };
   show(`now-roll-${u.originalName}`, !!v.nsHeel);
   show(`now-pitch-${u.originalName}`, !!v.nsTrim);
   show(`now-sog-${u.originalName}`, !!v.nsSog);
@@ -623,6 +630,8 @@ setInterval(() => {
   });
 
   chartTS.update('none'); chartSOG.update('none');
+  // After adding a new unit, reapply ordering to match Athlete Configuration
+  try { if (typeof applyConfigOrderToTiles === 'function') applyConfigOrderToTiles(); } catch {}
   return u;
 }
 
@@ -655,6 +664,40 @@ function refreshUnitStylesForTheme(){
     const fI=distIdx.freq[id];  if(fI!=null){ const ds=distCharts.freq.data.datasets[fI]; ds.borderColor=c; ds.backgroundColor=c+'22'; }
   }
 }
+
+// Reorder Now tiles and per-unit stats to follow Athlete Configuration order
+function applyConfigOrderToTiles(){
+  try{
+    const order = (typeof getConfigOrder==='function') ? getConfigOrder() : [];
+    if (!order || order.length === 0) return;
+    // Reorder Now cards
+    const nowWrap = document.getElementById('nowUnits');
+    if (nowWrap){
+      const cards = [];
+      order.forEach(id => {
+        const el = document.getElementById(`tag-${id}`)?.closest('.unitNow');
+        if (el) cards.push(el);
+      });
+      // Append in order (any not found will remain in original place)
+      cards.forEach(el => nowWrap.appendChild(el));
+    }
+    // Reorder Stats cards (Now window stats) — find cards having a stat node for the id
+    const rows = Array.from(document.querySelectorAll('.unitStats'));
+    const parent = rows.length ? rows[0].parentElement : null;
+    if (parent){
+      const byId = new Map();
+      rows.forEach(card => {
+        const anyStat = card.querySelector('[id^="st-roll-mean-"]');
+        if (anyStat){
+          const id = anyStat.id.replace('st-roll-mean-','');
+          byId.set(id, card);
+        }
+      });
+      order.forEach(id => { const card = byId.get(id); if (card) parent.appendChild(card); });
+    }
+  }catch{}
+}
+document.addEventListener('DOMContentLoaded', applyConfigOrderToTiles);
 
 // ---------- helpers: windows, axes, prune ----------
 const viewRange=$('viewSecRange'), viewNum=$('viewSec'); let currentViewSec=parseInt(viewNum.value||'30',10);

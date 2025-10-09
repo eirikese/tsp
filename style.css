@@ -78,7 +78,7 @@ margin-top: 32px;
 .blink{animation:pulse 1s infinite}
 .range-row{display:grid;grid-template-columns:1fr auto;gap: var(--gap);align-items:center} input[type="range"]{width:100%;accent-color:var(--accent)}
 .unitNow{border-radius:10px;padding:10px;border:1px solid var(--border);background:var(--input)}
-.unitTag{display:inline-block;padding:2px 8px;border-radius:999px;font-weight:700;margin-bottom:6px;color:#000}
+.unitTag{display:inline-block;padding:2px 8px;border-radius:999px;font-weight:700;margin-bottom:6px;color:#fff;text-shadow:0 1px 1px rgba(0,0,0,0.35)}
 .uNums .num{color:var(--ucolor)}
 /* Emphasize key Now-card metrics (Heel, Trim, SOG, VMG) without affecting other numbers */
 .uNums .num[id^="now-roll-"],
