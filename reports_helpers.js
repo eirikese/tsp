@@ -2,9 +2,11 @@
 function generateReportsTabs() {
   const tabsEl = document.getElementById('reportsTabs');
   const contentEl = document.getElementById('reportsContent');
+  const actionsEl = document.getElementById('reportsActions');
   if (!tabsEl || !contentEl) return;
   tabsEl.innerHTML = '';
   contentEl.innerHTML = '';
+  if (actionsEl) actionsEl.innerHTML = '';
 
   // Prepare Import CSV controls (appended later after buttons)
   // Hidden file input (single file)
@@ -35,19 +37,95 @@ function generateReportsTabs() {
       e.target.value = '';
     }
   });
-  tabsEl.appendChild(_importFileInput);
+  // Attach hidden input to actions container for click support
+  (actionsEl || tabsEl).appendChild(_importFileInput);
   const _importBtn = document.createElement('button');
   _importBtn.textContent = 'Import CSV';
   _importBtn.className = 'small';
   _importBtn.onclick = () => _importFileInput.click();
 
+  // Build actions row (top)
+  if (actionsEl) {
+    // Delete Selected
+    const delBtn = document.createElement('button');
+    delBtn.textContent = 'Delete Selected Report';
+    delBtn.className = 'small';
+    delBtn.onclick = function() {
+      const activeBtn = tabsEl.querySelector('.tabbtn.active');
+      if (!activeBtn) return;
+      const recId = activeBtn.dataset.recId;
+      const idx = allRecordings.findIndex(r => r.id === recId);
+      if (idx !== -1) {
+        if (confirm('Delete this report?')) {
+          allRecordings.splice(idx, 1);
+          saveRecordingsToStorage();
+          generateReportsTabs();
+        }
+      }
+    };
+    actionsEl.appendChild(delBtn);
+
+    // Rename Selected
+    const renBtn = document.createElement('button');
+    renBtn.textContent = 'Rename Selected Report';
+    renBtn.className = 'small';
+    renBtn.onclick = function() {
+      const activeBtn = tabsEl.querySelector('.tabbtn.active');
+      if (!activeBtn) return;
+      const recId = activeBtn.dataset.recId;
+      const rec = allRecordings.find(r => r.id === recId);
+      if (rec) {
+        const newName = prompt('Enter new name for this report:', rec.label || '');
+        if (newName && newName.trim()) {
+          rec.label = newName.trim();
+          saveRecordingsToStorage();
+          generateReportsTabs();
+        }
+      }
+    };
+    actionsEl.appendChild(renBtn);
+
+    // Download CSV (selected)
+    const dlSelectedBtn = document.createElement('button');
+    dlSelectedBtn.textContent = 'Download CSV (selected)';
+    dlSelectedBtn.className = 'small';
+    dlSelectedBtn.onclick = function(){
+      const activeBtn = tabsEl.querySelector('.tabbtn.active');
+      if(!activeBtn) return; const recId = activeBtn.dataset.recId;
+      const rec = allRecordings.find(r=>r.id===recId); if(!rec) return;
+      try{ const csv = buildCsvForRecording(rec); triggerCsvDownload(csv, makeCsvFilename(rec)); }catch(e){ console.warn('CSV build failed', e); }
+    };
+    actionsEl.appendChild(dlSelectedBtn);
+
+    // Download CSV (all)
+    const dlAllBtn = document.createElement('button');
+    dlAllBtn.textContent = 'Download CSV (all)';
+    dlAllBtn.className = 'small';
+    dlAllBtn.title = 'Downloads each CSV separately. Your browser may ask to allow multiple downloads.';
+    dlAllBtn.onclick = function(){
+      if(!Array.isArray(allRecordings) || allRecordings.length===0) return;
+      let i = 0;
+      const next = () => {
+        if (i >= allRecordings.length) return;
+        try{
+          const rec = allRecordings[i];
+          const csv = buildCsvForRecording(rec);
+          const fname = makeCsvFilename(rec);
+          triggerCsvDownload(csv, fname);
+        }catch(e){ console.warn('CSV download failed', e); }
+        i++;
+        setTimeout(next, 250);
+      };
+      next();
+    };
+    actionsEl.appendChild(dlAllBtn);
+
+    // Import CSV
+    const importBtn = _importBtn; importBtn.className = 'small';
+    actionsEl.appendChild(importBtn);
+  }
+
   if (allRecordings.length === 0) {
-    // When no recordings, show Import button on the right
-    const spacer = document.createElement('div');
-    spacer.style.flex = '1 1 auto';
-    spacer.style.display = 'inline-block';
-    tabsEl.appendChild(spacer);
-    tabsEl.appendChild(_importBtn);
     contentEl.innerHTML = '<div class="small">No recordings yet. Use "Import CSV" to load a past session or finish a recording to see reports.</div>';
     return;
   }
@@ -70,53 +148,7 @@ function generateReportsTabs() {
     btn.onclick = () => showReportFor(rec.id);
     tabsEl.appendChild(btn);
   });
-  // Add delete button
-  const delBtn = document.createElement('button');
-  delBtn.textContent = 'Delete Selected Report';
-  delBtn.className = 'small';
-  delBtn.style.marginLeft = '16px';
-  delBtn.onclick = function() {
-    const activeBtn = tabsEl.querySelector('.tabbtn.active');
-    if (!activeBtn) return;
-    const recId = activeBtn.dataset.recId;
-    const idx = allRecordings.findIndex(r => r.id === recId);
-    if (idx !== -1) {
-      if (confirm('Delete this report?')) {
-        allRecordings.splice(idx, 1);
-        saveRecordingsToStorage();
-        generateReportsTabs();
-      }
-    }
-  };
-  tabsEl.appendChild(delBtn);
-
-  // Add rename button
-  const renBtn = document.createElement('button');
-  renBtn.textContent = 'Rename Selected Report';
-  renBtn.className = 'small';
-  renBtn.style.marginLeft = '8px';
-  renBtn.onclick = function() {
-    const activeBtn = tabsEl.querySelector('.tabbtn.active');
-    if (!activeBtn) return;
-    const recId = activeBtn.dataset.recId;
-    const rec = allRecordings.find(r => r.id === recId);
-    if (rec) {
-      const newName = prompt('Enter new name for this report:', rec.label || '');
-      if (newName && newName.trim()) {
-        rec.label = newName.trim();
-        saveRecordingsToStorage();
-        generateReportsTabs();
-      }
-    }
-  };
-  tabsEl.appendChild(renBtn);
-  // Add spacer to push actions to the right, then Import to the right of Rename
-  const spacer = document.createElement('div');
-  spacer.style.flex = '1 1 auto';
-  spacer.style.display = 'inline-block';
-  tabsEl.appendChild(spacer);
-  _importBtn.style.marginLeft = '8px';
-  tabsEl.appendChild(_importBtn);
+  // Actions row now lives in reportsActions; tabsEl only holds recording tabs
   // Show latest by default
   showReportFor(allRecordings[allRecordings.length-1].id);
 }
@@ -833,3 +865,62 @@ function showReportFor(recId) {
 // make available to other modules
 window.generateReportsTabs = generateReportsTabs;
 window.showReportFor = showReportFor;
+
+// ------- CSV helpers (Reports) -------
+function fmt2(n){ return String(n).padStart(2,'0'); }
+function makeCsvFilename(rec=null){
+  const d = rec && rec.startedAt ? new Date(rec.startedAt) : new Date();
+  const ts = `${d.getFullYear()}-${fmt2(d.getMonth()+1)}-${fmt2(d.getDate())}_${fmt2(d.getHours())}-${fmt2(d.getMinutes())}-${fmt2(d.getSeconds())}`;
+  return `trollsports_${ts}.csv`;
+}
+function triggerCsvDownload(csvText, filename){
+  const blob = new Blob([csvText], {type:'text/csv'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+function buildCsvHeader(){
+  return ['unit_id','athlete','timestamp_ms','iso_time','elapsed_s','seq','roll_deg','pitch_deg','lat','lon','gnss_ms','gnss_iso'].join(',');
+}
+function buildCsvForRecording(rec){
+  if(!rec || !Array.isArray(rec.rows)) return '';
+  const lines = [buildCsvHeader()];
+  // meta lines
+  try{
+    if (rec.topMark && Number.isFinite(rec.topMark.lat) && Number.isFinite(rec.topMark.lon)) {
+      lines.push(`top_mark,${rec.topMark.lat.toFixed(6)},${rec.topMark.lon.toFixed(6)}`);
+    } else { lines.push('top_mark,,'); }
+    if (rec.startLine && rec.startLine.a && rec.startLine.b) {
+      lines.push(`start_pt1,${rec.startLine.a.lat.toFixed(6)},${rec.startLine.a.lon.toFixed(6)}`);
+      lines.push(`start_pt2,${rec.startLine.b.lat.toFixed(6)},${rec.startLine.b.lon.toFixed(6)}`);
+    } else { lines.push('start_pt1,,'); lines.push('start_pt2,,'); }
+    const pushWind = (label, w)=>{
+      if (w && Number.isFinite(w.direction)) lines.push(`${label},${w.direction.toFixed(0)},${Number.isFinite(w.knots)?w.knots.toFixed(1):''}`);
+      else lines.push(`${label},,`);
+    };
+    pushWind('wind_start', rec.windAtStart);
+    pushWind('wind_end', rec.windAtEnd);
+  }catch{}
+  // data rows
+  const t0 = (typeof window.globalT0 === 'number' && Number.isFinite(window.globalT0)) ? window.globalT0 : null;
+  for(const r of rec.rows){
+    const iso = new Date(r.t).toISOString().replace(/"/g,'""');
+    const u = window.units && window.units[r.unit];
+    const athlete = u ? (u.customName || r.unit) : r.unit;
+    lines.push([
+      r.unit,
+      athlete,
+      r.t,
+      `"${iso}"`,
+      (t0!=null?(((r.t - t0)/1000).toFixed(3)):'') ,
+      (r.seq??''),
+      (Number.isFinite(r.roll)?r.roll.toFixed(6):''),
+      (Number.isFinite(r.pitch)?r.pitch.toFixed(6):''),
+      (Number.isFinite(r.lat)?r.lat.toFixed(6):''),
+      (Number.isFinite(r.lon)?r.lon.toFixed(6):''),
+      (r.gnss_ms??''),
+      (r.gnss_iso?`"${r.gnss_iso.replace(/"/g,'""')}"`:'')
+    ].join(','));
+  }
+  return lines.join('\n');
+}
+// removed buildCsvForAllRecordings (no longer needed)
