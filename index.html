@@ -249,14 +249,7 @@
             </div>
             <div><label>Min peak distance (ms)</label><input id="minDist" value="300"/></div>
             <div><label>Min prominence (deg)</label><input id="minProm" value="5.0"/></div>
-            <div style="grid-column:1/-1;">
-              <label>Velocity smoothing window (seconds)</label>
-              <div class="range-row">
-                <input id="sogWinRange" type="range" min="3" max="30" step="1" value="8"/>
-                <input id="sogWin" type="number" min="3" max="30" step="1" value="8" style="width:90px"/>
-              </div>
-              <div class="tiny">Speed is computed from a linear fit of XY position over this window (1 Hz GNSS-friendly).</div>
-            </div>
+            <!-- Removed client-side velocity smoothing controls -->
 
             <!-- KDE smoothing controls -->
             <div style="grid-column:1/-1;">
@@ -277,32 +270,7 @@
           </div>
         </div>
 
-        <!-- Velocity Filter (GNSS) -->
-        <div class="card half">
-          <div style="font-weight:700;margin-bottom:8px;">Velocity Filter (GNSS)</div>
-          <div class="grid">
-            <div style="grid-column:1/-1;display:flex;align-items:center;gap:10px;">
-              <label style="margin:0;display:flex;align-items:center;gap:8px;">
-                <input type="checkbox" id="velFilterEnabled"> Enable velocity filter
-              </label>
-              <label style="margin:0;display:flex;align-items:center;gap:8px;">
-                Mode
-                <select id="velFilterMode">
-                  <option value="reject">Reject spikes</option>
-                  <option value="cap">Cap to max</option>
-                </select>
-              </label>
-            </div>
-            <div><label>Max speed (kt)</label><input id="velFilterMaxSpeedKnots" type="number" min="1" max="300" step="1" value="30"/></div>
-            <div><label>Min dt (s)</label><input id="velFilterMinDtS" type="number" min="0.01" max="5" step="0.01" value="0.05"/></div>
-            <div><label>Max dt (s)</label><input id="velFilterMaxDtS" type="number" min="1" max="600" step="1" value="40"/></div>
-          </div>
-          <div class="btns" style="margin-top:12px;">
-            <button id="velFilterSave">Save Velocity Filter</button>
-          </div>
-          <div id="velFilterStatus" class="small" style="margin-top:8px;"></div>
-          <div class="tiny" style="margin-top:6px;">Applies to Live and Reports. Bearing convention: 0°=North, 90°=East.</div>
-        </div>
+        <!-- Removed Velocity Filter (GNSS) UI -->
 
         <!-- Race Setup -->
         <div class="card half" style="display:none;"> <!-- HIDDEN -->
@@ -427,10 +395,10 @@ function ensureUnit(unitId){
     times: [], roll: [], pitch: [],
     seriesRoll: [], seriesPitch: [],
     seriesRollPk: [], seriesPitchPk: [],
-    gnssLatLngs: [], lat0: null, lon0: null, posBuf: [],
+  gnssLatLngs: [], lat0: null, lon0: null,
     sogEMA: null, heading: null, sogTimes: [], sogVals: [], sogSeries: [],
     vmgTimes: [], vmgVals: [], vmgSeries: [],
-    vx: null, vy: null,
+    
     idxRoll: null, idxPitch: null, idxRollPk: null, idxPitchPk: null, idxSOG: null, idxVMG: null,
     poly: null, marker: null, nowElems: {}, statsElems: {},
     lastRollHz: NaN, lastRollAt: 0, lastPitchHz: NaN, lastPitchAt: 0
@@ -469,11 +437,11 @@ function ensureUnit(unitId){
   <div class="grid" style="grid-template-columns:1fr 1fr">
   <div><div class="small">Heel</div><div class="num" id="now-roll-${unitId}">–</div></div>
   <div><div class="small">Trim</div><div class="num" id="now-pitch-${unitId}">–</div></div>
-      <div><div class="small">Freq (Hz)</div><div class="num" id="now-hz-${unitId}">–</div></div>
-      <div><div class="small">Heading (°)</div><div class="num" id="now-hdg-${unitId}">–</div></div>
-      <div><div class="small">TWA (°)</div><div class="num" id="now-twa-${unitId}">–</div></div>
       <div><div class="small">SOG (kt)</div><div class="num" id="now-sog-${unitId}">–</div></div>
       <div><div class="small">VMG (kt)</div><div class="num" id="now-vmg-${unitId}">–</div></div>
+      <div><div class="small">Heading (°)</div><div class="num" id="now-hdg-${unitId}">–</div></div>
+      <div><div class="small">TWA (°)</div><div class="num" id="now-twa-${unitId}">–</div></div>
+      <div><div class="small">Freq (Hz)</div><div class="num" id="now-hz-${unitId}">–</div></div>
       <div><div class="small">Dist→Start (m)</div><div class="num" id="now-dstart-${unitId}">–</div></div>
       <div><div class="small">Dist→Top (m)</div><div class="num" id="now-dtop-${unitId}">–</div></div>
       <div style="grid-column:1/-1"><div class="small">Lat, Lon</div><div class="small mono" id="now-ll-${unitId}">–</div></div>
@@ -604,7 +572,7 @@ function pruneOld(nowMs){
     while(u.times.length && u.times[0]<nowMs-keepMs){u.times.shift();u.roll.shift();u.pitch.shift();}
     while(u.seriesRoll.length && (globalT0 + u.seriesRoll[0].x*1000) < nowMs-keepMs){u.seriesRoll.shift();u.seriesPitch.shift();}
     while(u.gnssLatLngs.length>GNSS_KEEP){u.gnssLatLngs.shift(); if(u.poly) u.poly.setLatLngs(u.gnssLatLngs);}
-    while(u.posBuf.length && u.posBuf[0].t < nowMs - getSogWinSec()*1000){u.posBuf.shift();}
+  // Removed client-side SOG window buffer pruning
     while(u.sogTimes.length && u.sogTimes[0]<nowMs-keepMs){u.sogTimes.shift();u.sogVals.shift();}
     while(u.sogSeries.length && (globalT0 + u.sogSeries[0].x*1000) < nowMs-keepMs){u.sogSeries.shift();}
     while(u.vmgTimes.length && u.vmgTimes[0]<nowMs-keepMs){u.vmgTimes.shift();u.vmgVals.shift();}
@@ -816,7 +784,7 @@ function recomputePeaks(){
     if(u.nowElems.sogMean)   u.nowElems.sogMean.textContent  =isFinite(sogStats.mean)?sogStats.mean.toFixed(2):'–';
 
     const fNow = Number.isFinite(fShowR)?fShowR:(Number.isFinite(fShowP)?fShowP:NaN);
-    if(u.nowElems.hz) u.nowElems.hz.textContent = isFinite(fNow)? fNow.toFixed(2):'–';
+  if(u.nowElems.hz) u.nowElems.hz.textContent = isFinite(fNow)? fNow.toFixed(1):'–';
   }
 
   updateUnifiedDistributions();
@@ -1056,32 +1024,13 @@ function computeRecordingStats(rows) {
     };
     const fR = freq(rPeaks);
     const fP = freq(pPeaks);
-    // Compute TWA stats if wind direction is available
+    // Compute TWA stats if wind direction is available, using recorded heading
     let twaDisplay = '–';
     try {
       const windDir = (typeof getActiveWindDirection === 'function') ? getActiveWindDirection() : null;
       if (Number.isFinite(windDir)) {
-        // derive headings from lat/lon in recording
-        const heads = [];
-        const deg2rad = (d)=>d*Math.PI/180; const rad2deg = (r)=>r*180/Math.PI;
-        const bearingDeg = (lat1,lon1,lat2,lon2)=>{
-          const φ1=deg2rad(lat1), φ2=deg2rad(lat2); const Δλ=deg2rad(lon2-lon1);
-          const y=Math.sin(Δλ)*Math.cos(φ2);
-          const x=Math.cos(φ1)*Math.sin(φ2)-Math.sin(φ1)*Math.cos(φ2)*Math.cos(Δλ);
-          let θ = rad2deg(Math.atan2(y,x));
-          // normalize 0..360
-          θ = ((θ%360)+360)%360; return θ;
-        };
-        for (let k=1;k<arr.length;k++){
-          const a=arr[k-1], b=arr[k];
-          const lat1=Number(a.lat), lon1=Number(a.lon), lat2=Number(b.lat), lon2=Number(b.lon);
-          if (Number.isFinite(lat1)&&Number.isFinite(lon1)&&Number.isFinite(lat2)&&Number.isFinite(lon2)){
-            // skip identical points
-            if (lat1===lat2 && lon1===lon2) continue;
-            const hdg = bearingDeg(lat1,lon1,lat2,lon2);
-            heads.push(hdg);
-          }
-        }
+        // use recorded headings if available
+        const heads = arr.map(r => (typeof r.heading_deg === 'number' ? r.heading_deg : null)).filter(Number.isFinite);
         if (heads.length>0 && typeof angleDiffDeg==='function'){
           const twas = heads.map(h=> angleDiffDeg(windDir, h)).filter(Number.isFinite);
           if (twas.length>1){
@@ -1139,53 +1088,7 @@ function selectTab(name){
 }
 document.querySelectorAll('.tabbtn').forEach(b=>b.addEventListener('click',()=>selectTab(b.dataset.tab)));
 
-// ---------- Velocity Filter Settings ----------
-function initVelocityFilterCard(){
-  try{
-    const cfg = (typeof getVelocityFilterConfig === 'function') ? getVelocityFilterConfig() : null;
-    const en = document.getElementById('velFilterEnabled');
-    if(!en) return; // card not in DOM
-    const mode = document.getElementById('velFilterMode');
-    const maxKt = document.getElementById('velFilterMaxSpeedKnots');
-    const minDt = document.getElementById('velFilterMinDtS');
-    const maxDt = document.getElementById('velFilterMaxDtS');
-    if (cfg) {
-      en.checked = !!cfg.enabled;
-      if (mode) mode.value = (cfg.mode === 'cap' ? 'cap' : 'reject');
-      if (maxKt) maxKt.value = Number.isFinite(cfg.maxSpeedKnots) ? cfg.maxSpeedKnots : 30;
-      if (minDt) minDt.value = Number.isFinite(cfg.minDtS) ? cfg.minDtS : 0.05;
-      if (maxDt) maxDt.value = Number.isFinite(cfg.maxDtS) ? cfg.maxDtS : 40;
-    }
-  }catch(e){ /* ignore */ }
-}
-
-document.addEventListener('DOMContentLoaded', initVelocityFilterCard);
-window.addEventListener('storage', (e) => {
-  if (e.key === 'velocityFilterConfig') initVelocityFilterCard();
-});
-
-document.getElementById('velFilterSave')?.addEventListener('click', () => {
-  const en = document.getElementById('velFilterEnabled');
-  const mode = document.getElementById('velFilterMode');
-  const maxKt = document.getElementById('velFilterMaxSpeedKnots');
-  const minDt = document.getElementById('velFilterMinDtS');
-  const maxDt = document.getElementById('velFilterMaxDtS');
-  const status = document.getElementById('velFilterStatus');
-  const cfg = {
-    enabled: !!(en && en.checked),
-    mode: mode ? mode.value : 'reject',
-    maxSpeedKnots: maxKt ? parseFloat(maxKt.value) : 30,
-    minDtS: minDt ? parseFloat(minDt.value) : 0.05,
-    maxDtS: maxDt ? parseFloat(maxDt.value) : 40,
-  };
-  try{
-    const saved = (typeof saveVelocityFilterConfig === 'function') ? saveVelocityFilterConfig(cfg) : cfg;
-    if(status){
-      status.textContent = `Saved (mode: ${saved.mode}, max: ${saved.maxSpeedKnots} kt, dt: ${saved.minDtS}–${saved.maxDtS}s)`;
-      setTimeout(()=>{ status.textContent=''; }, 2500);
-    }
-  }catch(e){ if(status){ status.textContent = 'Save failed.'; } }
-});
+// Removed Velocity Filter settings JS (client-side velocity calc removed)
 // ---------- Unit Configuration ----------
 document.getElementById('saveUnitConfig')?.addEventListener('click', () => {
   if (saveUnitConfig()) {
@@ -1338,9 +1241,9 @@ function connect(){
       }
 
       // raw arrival buffers
-      u.times.push(t); u.roll.push(roll); u.pitch.push(pitch);
-      if(u.nowElems.roll) u.nowElems.roll.textContent = roll.toFixed(2);
-      if(u.nowElems.pitch) u.nowElems.pitch.textContent = pitch.toFixed(2);
+  u.times.push(t); u.roll.push(roll); u.pitch.push(pitch);
+  if(u.nowElems.roll) u.nowElems.roll.textContent = roll.toFixed(1);
+  if(u.nowElems.pitch) u.nowElems.pitch.textContent = pitch.toFixed(1);
 
       // Handle top mark and start line updates
       if(typeof d.top_mark_lat === 'number' && typeof d.top_mark_lon === 'number') {
@@ -1349,6 +1252,39 @@ function connect(){
       if(typeof d.start_pt1_lat === 'number' && typeof d.start_pt1_lon === 'number' && typeof d.start_pt2_lat === 'number' && typeof d.start_pt2_lon === 'number') {
         setStartLine(d.start_pt1_lat, d.start_pt1_lon, d.start_pt2_lat, d.start_pt2_lon);
       }
+
+      // Prefer device-provided SOG/HDG over client-side calculations
+      const sog_mps = (typeof d.sog_mps === 'number') ? d.sog_mps : null;
+      const hdg_deg = (typeof d.heading_deg === 'number') ? d.heading_deg : null;
+
+      // Update Now tiles immediately from telemetry
+      if (u.nowElems.sog) {
+        if (sog_mps != null && Number.isFinite(sog_mps)) {
+          const sog_kt = sog_mps * (window.KNOTS_PER_MPS || 1.94384449);
+          u.sogEMA = sog_kt; // reuse existing field for charts/stats
+          u.nowElems.sog.textContent = sog_kt.toFixed(1);
+          if (globalT0 != null) {
+            const xPlot = (t - globalT0) / 1000;
+            u.sogTimes.push(t); u.sogVals.push(sog_kt); u.sogSeries.push({ x: xPlot, y: sog_kt });
+          }
+        } else {
+          u.sogEMA = null;
+          u.nowElems.sog.textContent = '–';
+        }
+      }
+      if (u.nowElems.hdg) {
+        if (hdg_deg != null && Number.isFinite(hdg_deg)) {
+          u.heading = hdg_deg;
+          // Only show heading if SOG >= 1 kt; otherwise display dash
+          const sogOk = (u.sogEMA != null && Number.isFinite(u.sogEMA) && u.sogEMA >= 1);
+          u.nowElems.hdg.textContent = sogOk ? hdg_deg.toFixed(0) : '–';
+        } else {
+          u.heading = null;
+          u.nowElems.hdg.textContent = '–';
+        }
+      }
+      // Update TWA and wind-VMG based on telemetry fields
+      updateUnitTWA(u);
 
       const lat = coerceNum(d.lat), lon = coerceNum(d.lon);
       const hasFix = validLatLon(lat, lon);
@@ -1361,11 +1297,32 @@ function connect(){
         u.marker.setStyle({ opacity: (u.visible ? 1 : 0), fillOpacity: (u.visible ? 1 : 0) });
         if(!firstMapFixDone) fitMapIfFirst(lat, lon);
         if(u.nowElems.ll) u.nowElems.ll.textContent = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
-
-        updateVelocityFromWindow(u, t, lat, lon);
-        if(u.nowElems.sog) u.nowElems.sog.textContent = (u.sogEMA != null) ? u.sogEMA.toFixed(2) : '–';
-  if(u.nowElems.hdg) u.nowElems.hdg.textContent = (u.heading != null) ? u.heading.toFixed(0) : '–';
-  updateUnitTWA(u);
+        // Maintain lat0/lon0 baseline for local projections
+        if (u.lat0 === null || u.lon0 === null) { u.lat0 = lat; u.lon0 = lon; }
+        // Distances (top mark / start line)
+        const pxy = projLocalMeters(u.lat0, u.lon0, lat, lon);
+        updateDistancesForUnit(u, pxy, lat, lon);
+        // VMG toward top mark using device SOG/HDG if available
+        if (topMark && Number.isFinite(u.heading) && Number.isFinite(u.sogEMA)) {
+          const m = projLocalMeters(u.lat0, u.lon0, topMark.lat, topMark.lon);
+          const rx = m.x - pxy.x, ry = m.y - pxy.y;
+          const rmag = Math.hypot(rx, ry);
+          if (rmag > 0) {
+            // Bearing to mark in local frame (deg, 0=N, 90=E as per bearingFromV)
+            const brgMark = bearingFromV(rx, ry);
+            const ddeg = (typeof angleDiffDeg === 'function') ? angleDiffDeg(brgMark, u.heading) : (brgMark - u.heading);
+            const vmg = u.sogEMA * Math.cos((ddeg * Math.PI) / 180);
+            if (Number.isFinite(vmg)) {
+              if (u.nowElems.vmg) u.nowElems.vmg.textContent = vmg.toFixed(1);
+              if (globalT0 != null) {
+                const xPlot = (t - globalT0) / 1000;
+                u.vmgTimes.push(t); u.vmgVals.push(vmg); u.vmgSeries.push({ x: xPlot, y: vmg });
+              }
+            }
+          }
+        } else {
+          if (u.nowElems.vmg) u.nowElems.vmg.textContent = '–';
+        }
       } else {
         if(u.nowElems.ll) u.nowElems.ll.textContent = '–';
       }
@@ -1382,6 +1339,8 @@ function connect(){
           lon: (hasFix ? lon : ''),
           gnss_ms: d.gnss_ms ?? '',
           gnss_iso: d.gnss_iso ?? '',
+          sog_mps: (typeof d.sog_mps === 'number' ? d.sog_mps : ''),
+          heading_deg: (typeof d.heading_deg === 'number' ? d.heading_deg : ''),
           ax: (typeof d.ax === 'number' ? d.ax : ''),
           ay: (typeof d.ay === 'number' ? d.ay : ''),
           az: (typeof d.az === 'number' ? d.az : '')
@@ -1390,8 +1349,8 @@ function connect(){
 
       // synced plot driver
 
-      chartSOG.update('none');
-      recomputePeaks();
+  chartSOG.update('none');
+  recomputePeaks();
       updateAxisRange();
 
     }catch(e){log('parse error: '+e);}
@@ -1407,7 +1366,7 @@ document.getElementById('btnClear').addEventListener('click',()=>{
     u.times.length=0;u.roll.length=0;u.pitch.length=0;
     u.seriesRoll.length=0;u.seriesPitch.length=0;u.seriesRollPk.length=0;u.seriesPitchPk.length=0;
     u.gnssLatLngs.length=0; u.poly.setLatLngs([]); u.poly.setStyle({opacity:0}); u.marker.setStyle({opacity:0, fillOpacity:0});
-    u.lat0=null; u.lon0=null; u.posBuf.length=0; u.sogEMA=null; u.heading=null;
+  u.lat0=null; u.lon0=null; u.sogEMA=null; u.heading=null;
     u.sogTimes.length=0; u.sogVals.length=0; u.sogSeries.length=0;
     u.vmgTimes.length=0; u.vmgVals.length=0; u.vmgSeries.length=0;
     [u.idxRoll,u.idxPitch,u.idxRollPk,u.idxPitchPk].forEach(i=>chartTS.data.datasets[i].hidden=false);
@@ -1450,7 +1409,7 @@ function updateUnitTWA(u){
     // VMG relative to wind: VMG = SOG * cos(TWA)
     if(Number.isFinite(u.sogEMA)){
       const vmg = u.sogEMA * Math.cos((twa*Math.PI)/180);
-      if(u.nowElems.vmg) u.nowElems.vmg.textContent = isFinite(vmg)? vmg.toFixed(2) : '–';
+  if(u.nowElems.vmg) u.nowElems.vmg.textContent = isFinite(vmg)? vmg.toFixed(1) : '–';
       // Append to VMG series as well (live view only; reuse current time window)
       const nowMs = Date.now();
       if(globalT0!=null){

@@ -3,6 +3,10 @@
 --gap: clamp(10px, 1.8vw, 14px);
 --pad: clamp(10px, 1.8vw, 14px);
 --card-pad: clamp(12px, 2vw, 16px);
+/* global UI zoom factor (1 = 100%) */
+--ui-zoom: 1;
+/* main stats (Heel/Trim/SOG/VMG) scale multiplier */
+--mainstats-scale: 1;
 
 /* theme tokens */
 --bg:#f7f9fc;
@@ -24,6 +28,8 @@
 }
 *{box-sizing:border-box} html,body{height:100%} 
 body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,Arial,sans-serif;padding-bottom:env(safe-area-inset-bottom)}
+/* Apply site-wide scaling; using zoom for simplicity across dashboards */
+body{ zoom: var(--ui-zoom); }
 .topbar{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:10px;padding:calc(8px + env(safe-area-inset-top)) var(--pad) 8px;background:linear-gradient(180deg,var(--topbar1),var(--topbar2));border-bottom:1px solid var(--border)}
 .app-title{font-weight:700}.spacer{flex:1}.ver{color:var(--muted);font-size:12px}
 .tabs{display:flex;gap:6px}.tabbtn{padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:var(--btn);color:var(--text);cursor:pointer;font-weight:600}
@@ -63,6 +69,14 @@ margin-top: 32px;
 .unitNow{border-radius:10px;padding:10px;border:1px solid var(--border);background:var(--input)}
 .unitTag{display:inline-block;padding:2px 8px;border-radius:999px;font-weight:700;margin-bottom:6px;color:#000}
 .uNums .num{color:var(--ucolor)}
+/* Emphasize key Now-card metrics (Heel, Trim, SOG, VMG) without affecting other numbers */
+.uNums .num[id^="now-roll-"],
+.uNums .num[id^="now-pitch-"],
+.uNums .num[id^="now-sog-"],
+.uNums .num[id^="now-vmg-"]{
+	font-size: calc(clamp(28px, 7.2vw, 48px) * var(--mainstats-scale));
+	line-height: 1.1;
+}
 #map{height:45vh;max-height:590px;min-height:220px;border-radius:12px;overflow:hidden;display:flex;width:100%}
 .leaflet-container{flex:1 1 auto;width:100%!important;height:100%!important;background:var(--leaflet-bg)}
 .leaflet-container{background:var(--leaflet-bg)}

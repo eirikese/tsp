@@ -1,5 +1,5 @@
 
-// ---------- velocity, distances & VMG ----------
+// ---------- distances & helpers ----------
 const Rm=6371000;
 function projLocalMeters(lat0,lon0,lat,lon){const toR=a=>a*Math.PI/180;return {x:(toR(lon)-toR(lon0))*Math.cos(toR(lat0))*Rm,y:(toR(lat)-toR(lat0))*Rm}}
 function bearingFromV(vx,vy){ const toD=a=>a*180/Math.PI; let brg=toD(Math.atan2(vx,vy)); if(brg<0) brg+=360; return brg; }
@@ -22,7 +22,7 @@ function updateDistancesForUnit(u, pxy, lat, lon){
     const tm = projLocalMeters(u.lat0,u.lon0, topMark.lat, topMark.lon);
     const rx = tm.x - pxy.x, ry = tm.y - pxy.y;
     const dTop = Math.hypot(rx,ry);
-    if(u.nowElems.dTop) u.nowElems.dTop.textContent = Number.isFinite(dTop)? dTop.toFixed(1) : '–';
+    if(u.nowElems.dTop) u.nowElems.dTop.textContent = Number.isFinite(dTop)? dTop.toFixed(0) : '–';
   } else {
     if(u.nowElems.dTop) u.nowElems.dTop.textContent = '–';
   }
@@ -31,62 +31,13 @@ function updateDistancesForUnit(u, pxy, lat, lon){
     const A = projLocalMeters(u.lat0,u.lon0, startLine.a.lat, startLine.a.lon);
     const B = projLocalMeters(u.lat0,u.lon0, startLine.b.lat, startLine.b.lon);
     const dStart = orthogonalDistanceToLine(A.x,A.y,B.x,B.y,pxy.x,pxy.y);
-    if(u.nowElems.dStart) u.nowElems.dStart.textContent = Number.isFinite(dStart)? dStart.toFixed(1) : '–';
+    if(u.nowElems.dStart) u.nowElems.dStart.textContent = Number.isFinite(dStart)? dStart.toFixed(0) : '–';
   } else {
     if(u.nowElems.dStart) u.nowElems.dStart.textContent = '–';
   }
 }
 
-function updateVelocityFromWindow(u,t,lat,lon){
-  if(u.lat0===null||u.lon0===null){ u.lat0=lat; u.lon0=lon; }
-
-  const p=projLocalMeters(u.lat0,u.lon0,lat,lon);
-  u.posBuf.push({t,lat,lon,x:p.x,y:p.y});
-  const winMs=getSogWinSec()*1000;
-  while(u.posBuf.length && u.posBuf[0].t < t - winMs){ u.posBuf.shift(); }
-  if(u.posBuf.length<2) return;
-  // Compute velocity using endpoints of the window via utilities.velocitySafe()
-  const first=u.posBuf[0], last=u.posBuf[u.posBuf.length-1];
-  const vf = getVelocityFilterConfig();
-  const v = vf.enabled ? velocitySafe({x:first.x,y:first.y}, first.t, {x:last.x,y:last.y}, last.t, vf) : velocity({x:first.x,y:first.y}, first.t, {x:last.x,y:last.y}, last.t);
-  if(vf.enabled && !v.ok){
-    // Update distances even if speed rejected, then bail out from speed/heading update
-    updateDistancesForUnit(u, p, lat, lon);
-    return;
-  }
-  const vx=v.vx, vy=v.vy;
-  u.vx=vx; u.vy=vy;
-
-  const spd_mps=v.speed_mps, spd_kt=v.speed_knots;
-
-  const alpha=0.2;
-  u.sogEMA=(u.sogEMA==null)?spd_kt:(u.sogEMA*(1-alpha)+spd_kt*alpha);
-  u.heading=(u.sogEMA>2)?bearingFromV(vx,vy):null;
-
-  const xPlot=(t-globalT0)/1000;
-  u.sogTimes.push(t); u.sogVals.push(u.sogEMA); u.sogSeries.push({x:xPlot,y:u.sogEMA});
-
-  // VMG toward top mark (if set)
-  if(topMark){
-    const m = projLocalMeters(u.lat0,u.lon0, topMark.lat, topMark.lon);
-    const rx = m.x - p.x, ry = m.y - p.y;
-    const rmag = Math.hypot(rx,ry);
-    let vmg_kt = 0;
-    if(rmag>0){
-      const vmg_mps = (vx*rx + vy*ry) / rmag;
-      vmg_kt = vmg_mps * KNOTS_PER_MPS;
-    }
-    if(Number.isFinite(vmg_kt)){
-      u.vmgTimes.push(t); u.vmgVals.push(vmg_kt); u.vmgSeries.push({x:xPlot,y:vmg_kt});
-      if(u.nowElems.vmg) u.nowElems.vmg.textContent = vmg_kt.toFixed(2);
-    }
-  } else {
-    if(u.nowElems.vmg) u.nowElems.vmg.textContent = '–';
-  }
-
-  // distances
-  updateDistancesForUnit(u, p, lat, lon);
-}
+// Removed client-side velocity and heading calculations. Device-provided SOG/HDG are used instead.
 
 // ---------- Top Mark placement ----------
 function clearVMGSeriesAll(){
@@ -193,14 +144,7 @@ function startPlaceStartLine(){
   map.once('click', clickA);
 }
 
-// windows
-const sogRange = document.getElementById('sogWinRange');
-const sogNum = document.getElementById('sogWin');
-function getSogWinSec(){ return clamp(parseInt((sogNum?.value)||'8',10),3,30); }
-if (sogRange && sogNum) {
-  sogRange.addEventListener('input',e=>sogNum.value=e.target.value);
-  sogNum.addEventListener('change',e=>sogRange.value=e.target.value);
-}
+// Removed SOG smoothing window controls; no client-side velocity computation.
 
 // ---------- Coach (phone) live position on map ----------
 let coachWatchId = null;
@@ -350,12 +294,10 @@ window.startPlaceTopMark = startPlaceTopMark;
 window.setStartLine = setStartLine;
 window.startPlaceStartLine = startPlaceStartLine;
 window.clearVMGSeriesAll = clearVMGSeriesAll;
-window.updateVelocityFromWindow = updateVelocityFromWindow;
 window.updateDistancesForUnit = updateDistancesForUnit;
 window.orthogonalDistanceToLine = orthogonalDistanceToLine;
 window.bearingFromV = bearingFromV;
 window.projLocalMeters = projLocalMeters;
-window.getSogWinSec = getSogWinSec;
 window.KNOTS_PER_MPS = KNOTS_PER_MPS;
 window.Rm = Rm;
 window.MAX_KEEP_SEC = MAX_KEEP_SEC;

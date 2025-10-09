@@ -161,6 +161,8 @@ function parseCsvTextToRecording(csvText, fileName='import.csv'){
   const cAx = idx(['ax']);
   const cAy = idx(['ay']);
   const cAz = idx(['az']);
+  const cSogMps = idx(['sog_mps','sog']);
+  const cHdgDeg = idx(['heading_deg','hdg_deg','heading']);
 
   // Metadata defaults
   let topMark = null;
@@ -220,7 +222,7 @@ function parseCsvTextToRecording(csvText, fileName='import.csv'){
       continue;
     }
 
-    // Data rows
+  // Data rows
     const cells = line.split(',');
     const unit = (cUnit!==-1 ? (cells[cUnit]||'').trim() : (cAthlete!==-1 ? (cells[cAthlete]||'').trim() : 'unknown')) || 'unknown';
     const t = parseTimeMs(cells);
@@ -231,15 +233,17 @@ function parseCsvTextToRecording(csvText, fileName='import.csv'){
     const lon = parseNum(cells[cLon]);
     const gnss_ms = (cGnssMs!==-1 ? parseNum(cells[cGnssMs]) : null);
     const gnss_iso = (cGnssIso!==-1 ? (cells[cGnssIso]||'').replace(/^"|"$/g,'') : '');
-    const ax = (cAx!==-1 ? parseNum(cells[cAx]) : null);
-    const ay = (cAy!==-1 ? parseNum(cells[cAy]) : null);
-    const az = (cAz!==-1 ? parseNum(cells[cAz]) : null);
+  const ax = (cAx!==-1 ? parseNum(cells[cAx]) : null);
+  const ay = (cAy!==-1 ? parseNum(cells[cAy]) : null);
+  const az = (cAz!==-1 ? parseNum(cells[cAz]) : null);
+  const sog_mps = (cSogMps!==-1 ? parseNum(cells[cSogMps]) : null);
+  const heading_deg = (cHdgDeg!==-1 ? parseNum(cells[cHdgDeg]) : null);
     // Only include rows with at least time and one of roll/pitch or lat/lon
     if (!Number.isFinite(t)) continue;
     const hasAngles = Number.isFinite(roll) || Number.isFinite(pitch);
     const hasFix = Number.isFinite(lat) && Number.isFinite(lon);
     if (!hasAngles && !hasFix) continue;
-    rows.push({ unit, t, seq, roll: Number.isFinite(roll)?roll:null, pitch: Number.isFinite(pitch)?pitch:null, lat: Number.isFinite(lat)?lat:null, lon: Number.isFinite(lon)?lon:null, gnss_ms, gnss_iso, ax, ay, az });
+  rows.push({ unit, t, seq, roll: Number.isFinite(roll)?roll:null, pitch: Number.isFinite(pitch)?pitch:null, lat: Number.isFinite(lat)?lat:null, lon: Number.isFinite(lon)?lon:null, gnss_ms, gnss_iso, ax, ay, az, sog_mps: Number.isFinite(sog_mps)?sog_mps:null, heading_deg: Number.isFinite(heading_deg)?heading_deg:null });
   }
 
   if (!rows.length) return null;
@@ -312,7 +316,7 @@ function showReportFor(recId) {
   html += `</div></div>`;
   // Stats tiles, one per athlete, only if shown
   html += `<div id="report-athlete-stats" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">`;
-  // Use utilities.velocity() for distance-derived speed and bearing
+  // Use device-provided SOG/Heading (recorded), not distance-derived
 
   unitIds.forEach(id => {
     if (!rec._athleteShow[id]) return;
@@ -321,19 +325,15 @@ function showReportFor(recId) {
     const rolls = arr.map(r => r.roll).filter(Number.isFinite);
     const pitchs = arr.map(r => r.pitch).filter(Number.isFinite);
 
-    // Calculate SOG and heading from lat/lon and t using velocitySafe() with global config
+    // Collect SOG/Heading from recording rows when available
     const sogs = [];
     const headings = [];
-    for (let i = 1; i < arr.length; ++i) {
-      const r1 = arr[i-1], r2 = arr[i];
-      if (Number.isFinite(r1.lat) && Number.isFinite(r1.lon) && Number.isFinite(r2.lat) && Number.isFinite(r2.lon) && Number.isFinite(r1.t) && Number.isFinite(r2.t)) {
-        const vf = getVelocityFilterConfig();
-        const v = vf.enabled ? velocitySafe({lat:r1.lat, lon:r1.lon}, r1.t, {lat:r2.lat, lon:r2.lon}, r2.t, vf) : velocity({lat:r1.lat, lon:r1.lon}, r1.t, {lat:r2.lat, lon:r2.lon}, r2.t);
-        if (!vf.enabled || v.ok) {
-          sogs.push(v.speed_knots);
-          if (v.bearing_deg!=null) headings.push(v.bearing_deg);
-        }
-      }
+    for (let i = 0; i < arr.length; ++i) {
+      const r = arr[i];
+      const sog_mps = (typeof r.sog_mps === 'number') ? r.sog_mps : null;
+      const hdg = (typeof r.heading_deg === 'number') ? r.heading_deg : null;
+      if (sog_mps != null && Number.isFinite(sog_mps)) sogs.push(sog_mps * (window.KNOTS_PER_MPS || 1.94384449));
+      if (hdg != null && Number.isFinite(hdg)) headings.push(hdg);
     }
 
     // Mean and SD helpers
@@ -393,20 +393,12 @@ function showReportFor(recId) {
         byUnit[r.unit].push(r);
       }
     });
-    // SOG data check
+    // SOG data check (prefer device SOG field)
     for (const unit of shownIds) {
       const arr = byUnit[unit] || [];
-      for (let i = 1; i < arr.length; ++i) {
-        const r1 = arr[i-1], r2 = arr[i];
-        if (Number.isFinite(r1.lat) && Number.isFinite(r1.lon) && Number.isFinite(r2.lat) && Number.isFinite(r2.lon) && Number.isFinite(r1.t) && Number.isFinite(r2.t)) {
-          const vf = getVelocityFilterConfig();
-          const v = vf.enabled ? velocitySafe({lat:r1.lat, lon:r1.lon}, r1.t, {lat:r2.lat, lon:r2.lon}, r2.t, vf)
-                               : velocity({lat:r1.lat, lon:r1.lon}, r1.t, {lat:r2.lat, lon:r2.lon}, r2.t);
-          if ((!vf.enabled || v.ok) && Number.isFinite(v.speed_knots) && v.speed_knots > 0) {
-            hasSogData = true;
-            break;
-          }
-        }
+      for (let i = 0; i < arr.length; ++i) {
+        const r = arr[i];
+        if (typeof r.sog_mps === 'number' && Number.isFinite(r.sog_mps) && r.sog_mps > 0) { hasSogData = true; break; }
       }
       if (hasSogData) break;
     }
@@ -479,19 +471,13 @@ function showReportFor(recId) {
   const headingLabels = headingBins.map(d => ([0,90,180,270].includes(d) ? `${d}°` : ''));
     const radarDatasets = shownIds.map(unit => {
       const arr = byUnit[unit] || [];
-      // Calculate heading and SOG for each segment using velocitySafe() with global config
+      // Pull heading and SOG from rows (device-provided)
       const sogs = [];
       const headings = [];
-      for (let i = 1; i < arr.length; ++i) {
-        const r1 = arr[i-1], r2 = arr[i];
-        if (Number.isFinite(r1.lat) && Number.isFinite(r1.lon) && Number.isFinite(r2.lat) && Number.isFinite(r2.lon) && Number.isFinite(r1.t) && Number.isFinite(r2.t)) {
-          const vf = getVelocityFilterConfig();
-          const v = vf.enabled ? velocitySafe({lat:r1.lat, lon:r1.lon}, r1.t, {lat:r2.lat, lon:r2.lon}, r2.t, vf) : velocity({lat:r1.lat, lon:r1.lon}, r1.t, {lat:r2.lat, lon:r2.lon}, r2.t);
-          if (!vf.enabled || v.ok) {
-            sogs.push(v.speed_knots);
-            if (v.bearing_deg!=null) headings.push(v.bearing_deg);
-          }
-        }
+      for (let i = 0; i < arr.length; ++i) {
+        const r = arr[i];
+        if (typeof r.sog_mps === 'number' && Number.isFinite(r.sog_mps)) sogs.push(r.sog_mps * (window.KNOTS_PER_MPS || 1.94384449));
+        if (typeof r.heading_deg === 'number' && Number.isFinite(r.heading_deg)) headings.push(r.heading_deg);
       }
       // Bin SOG by heading
       const binSums = Array(12).fill(0);
@@ -769,17 +755,7 @@ function showReportFor(recId) {
       const headingsByUnit = {};
       shownIds.forEach(unit => {
         const arr = byUnit[unit] || [];
-        const heads = [];
-        for (let i = 1; i < arr.length; ++i) {
-          const r1 = arr[i-1], r2 = arr[i];
-          if (Number.isFinite(r1.lat) && Number.isFinite(r1.lon) && Number.isFinite(r2.lat) && Number.isFinite(r2.lon) && Number.isFinite(r1.t) && Number.isFinite(r2.t)) {
-            const vf = getVelocityFilterConfig();
-            const v = vf.enabled ? velocitySafe({lat:r1.lat, lon:r1.lon}, r1.t, {lat:r2.lat, lon:r2.lon}, r2.t, vf) : velocity({lat:r1.lat, lon:r1.lon}, r1.t, {lat:r2.lat, lon:r2.lon}, r2.t);
-            if (!vf.enabled || v.ok) {
-              if (v.bearing_deg!=null) heads.push(v.bearing_deg);
-            }
-          }
-        }
+        const heads = arr.map(r => (typeof r.heading_deg === 'number' ? r.heading_deg : null)).filter(Number.isFinite);
         headingsByUnit[unit] = heads;
       });
       // Determine wind direction to use (only recorded end, then start; no live fallback)
@@ -817,18 +793,12 @@ function showReportFor(recId) {
       shownIds.forEach(unit => {
         const arr = byUnit[unit] || [];
         const sogs = [];
-        for (let i=1; i<arr.length; i++){
-          const r1 = arr[i-1], r2 = arr[i];
-          if (Number.isFinite(r1.lat)&&Number.isFinite(r1.lon)&&Number.isFinite(r2.lat)&&Number.isFinite(r2.lon)&&Number.isFinite(r1.t)&&Number.isFinite(r2.t)){
-            const vf = getVelocityFilterConfig();
-            const v = vf.enabled ? velocitySafe({lat:r1.lat, lon:r1.lon}, r1.t, {lat:r2.lat, lon:r2.lon}, r2.t, vf)
-                                 : velocity({lat:r1.lat, lon:r1.lon}, r1.t, {lat:r2.lat, lon:r2.lon}, r2.t);
-            if (!vf.enabled || v.ok) {
-              if (Number.isFinite(v.speed_knots) && v.speed_knots>0) {
-                sogs.push(v.speed_knots);
-                if (v.speed_knots > globalMax) globalMax = v.speed_knots;
-              }
-            }
+        for (let i=0; i<arr.length; i++){
+          const r = arr[i];
+          if (typeof r.sog_mps === 'number' && Number.isFinite(r.sog_mps) && r.sog_mps > 0) {
+            const kt = r.sog_mps * (window.KNOTS_PER_MPS || 1.94384449);
+            sogs.push(kt);
+            if (kt > globalMax) globalMax = kt;
           }
         }
         kdeData[unit] = { data: sogs };
