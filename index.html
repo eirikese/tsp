@@ -187,6 +187,46 @@
           </div>
         </div>
 
+        <!-- Scaling (merged UI + Now numbers) -->
+        <div class="card half">
+          <div style="font-weight:700;margin-bottom:8px;">Scaling</div>
+          <div class="grid" style="grid-template-columns:1fr;gap:12px;">
+            <div style="grid-column:1/-1;">
+              <label>Scale (0.75–1.5)</label>
+              <div class="range-row">
+                <input id="uiZoomRange" type="range" min="0.75" max="1.5" step="0.05" value="1"/>
+                <input id="uiZoom" type="number" min="0.75" max="1.5" step="0.05" value="1" style="width:90px"/>
+              </div>
+            </div>
+            <div style="grid-column:1/-1;">
+              <label>Now Numbers Scale (0.75–2.0)</label>
+              <div class="range-row">
+                <input id="mainStatsScaleRange" type="range" min="0.75" max="2.0" step="0.05" value="1"/>
+                <input id="mainStatsScale" type="number" min="0.75" max="2.0" step="0.05" value="1" style="width:90px"/>
+              </div>
+            </div>
+          </div>
+          <div class="tiny" style="margin-top:6px;">Tip: UI Scale zooms the entire interface; Now Numbers Scale only affects Heel, Trim, SOG, VMG.</div>
+        </div>
+
+        <!-- Now Stats Visibility -->
+        <div class="card half">
+          <div style="font-weight:700;margin-bottom:8px;">Now Stats Visibility</div>
+          <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;align-items:center;">
+            <label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="nsHeel" checked/>Heel</label>
+            <label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="nsTrim" checked/>Trim</label>
+            <label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="nsSog" checked/>SOG</label>
+            <label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="nsVmg" checked/>VMG</label>
+            <label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="nsHdg" checked/>Heading</label>
+            <label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="nsTwa" checked/>TWA</label>
+            <label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="nsFreq" checked/>Frequency</label>
+            <label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="nsDstart" checked/>Dist→Start</label>
+            <label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="nsDtop" checked/>Dist→Top</label>
+            <label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="nsLatlon" checked/>Lat/Lon</label>
+          </div>
+          <div class="tiny" style="margin-top:6px;">Choose which Now fields to show for all athletes. Saved locally.</div>
+        </div>
+
         <!-- Connection -->
         <div class="card half" style="display:none;"> <!-- HIDDEN -->
           <div style="font-weight:700;margin-bottom:8px;">Connection</div>
@@ -286,6 +326,16 @@
 
         <!-- Logs -->
         <div class="card grow"><div style="font-weight:700;margin-bottom:8px;">Logs</div><pre class="log" id="log"></pre></div>
+
+        <!-- Recording Settings -->
+        <div class="card half">
+          <div style="font-weight:700;margin-bottom:8px;">Recording</div>
+          <label style="display:flex;align-items:center;gap:8px;">
+            <input type="checkbox" id="autoDownloadCsv" checked/>
+            Auto-download CSV on stop
+          </label>
+          <div class="tiny" style="margin-top:6px;">Disable to prevent automatic CSV download after ending a recording.</div>
+        </div>
       </div>
     </section>
   </div>
@@ -352,6 +402,11 @@ let startLineLayer=null;
 let startLineMarkers={a:null,b:null};
 let placingStartPhase=0; // 0 idle, 1 awaiting A, 2 awaiting B
 
+// Admission control for new units: require N msgs within T window before showing
+const PENDING_WINDOW_MS = 3000;
+const PENDING_COUNT_THRESHOLD = 10;
+const pendingUnits = {}; // unitId -> { times: number[], lastLogCount: number }
+
 
 // use helper from wind_manual
 function createSmallWindArrowSVG(direction, size=24){
@@ -370,6 +425,40 @@ let recActive=false, recRows=[], recStartedAt=null;
 
 // DOM refs
 const nowUnits=$('nowUnits'), unitsList=$('unitsList');
+
+// Now stats visibility state and helpers
+const NOW_VIS_KEYS = {
+  Heel: 'nsHeel', Trim: 'nsTrim', SOG: 'nsSog', VMG: 'nsVmg', Heading: 'nsHdg', TWA: 'nsTwa', Freq: 'nsFreq', Dstart: 'nsDstart', Dtop: 'nsDtop', Latlon: 'nsLatlon'
+};
+function getNowVisibility(){
+  try{
+    const raw = localStorage.getItem('nowStatsVisibility');
+    const def = {nsHeel: true, nsTrim: true, nsSog: true, nsVmg: true, nsHdg: true, nsTwa: true, nsFreq: true, nsDstart: true, nsDtop: true, nsLatlon: true};
+    if(!raw) return def;
+    const obj = JSON.parse(raw);
+    return {...def, ...obj};
+  }catch{return {nsHeel:true,nsTrim:true,nsSog:true,nsVmg:true,nsHdg:true,nsTwa:true,nsFreq:true,nsDstart:true,nsDtop:true,nsLatlon:true};}
+}
+function setNowVisibility(v){ try{ localStorage.setItem('nowStatsVisibility', JSON.stringify(v)); }catch{} }
+function applyNowVisibilityToUnit(u){
+  const v = getNowVisibility();
+  const root = u.nowElems?.roll && document.querySelector(`#now-roll-${u.originalName}`)?.closest('.grid');
+  if(!root) return;
+  const show = (id, ok)=>{ const el = document.getElementById(id); if(!el) return; const tile = el.closest('div'); if(tile) tile.style.display = ok? '' : 'none'; };
+  show(`now-roll-${u.originalName}`, !!v.nsHeel);
+  show(`now-pitch-${u.originalName}`, !!v.nsTrim);
+  show(`now-sog-${u.originalName}`, !!v.nsSog);
+  show(`now-vmg-${u.originalName}`, !!v.nsVmg);
+  show(`now-hdg-${u.originalName}`, !!v.nsHdg);
+  show(`now-twa-${u.originalName}`, !!v.nsTwa);
+  show(`now-hz-${u.originalName}`,  !!v.nsFreq);
+  show(`now-dstart-${u.originalName}`, !!v.nsDstart);
+  show(`now-dtop-${u.originalName}`, !!v.nsDtop);
+  // Lat/Lon lives in a full-width tile; hide the value row if disabled
+  const ll = document.getElementById(`now-ll-${u.originalName}`);
+  if(ll){ const row = ll.closest('div')?.parentElement; if(row) row.style.display = v.nsLatlon? '' : 'none'; }
+}
+function applyNowVisibilityAll(){ for(const id of Object.keys(units)) applyNowVisibilityToUnit(units[id]); }
 
 // ---------- unit management ----------
 function ensureUnit(unitId){
@@ -452,6 +541,8 @@ function ensureUnit(unitId){
                hdg: $(`now-hdg-${unitId}`), twa: $(`now-twa-${unitId}`), ll: $(`now-ll-${unitId}`),
                dStart: $(`now-dstart-${unitId}`), dTop: $(`now-dtop-${unitId}`),
                refreshHz: $(`refresh-hz-${unitId}`) };
+  // Apply persisted Now visibility to this newly created unit
+  applyNowVisibilityToUnit(u);
 // Update refresh rate for each athlete tile in Now
 setInterval(() => {
   for (const id of Object.keys(units)) {
@@ -546,6 +637,50 @@ const viewRange=$('viewSecRange'), viewNum=$('viewSec'); let currentViewSec=pars
 function applyViewWindow(val){ currentViewSec=clamp(parseInt(val||'30',10),5,600); viewRange.value=currentViewSec; viewNum.value=currentViewSec; updateAxisRange(); }
 viewRange.addEventListener('input',e=>applyViewWindow(e.target.value));
 viewNum.addEventListener('change',e=>applyViewWindow(e.target.value));
+
+// UI Scale controls
+function applyUiZoom(val){
+  let v = parseFloat(val);
+  if (!Number.isFinite(v)) v = 1;
+  v = Math.min(1.5, Math.max(0.75, v));
+  // Update CSS variable used by body { zoom: var(--ui-zoom) }
+  document.documentElement.style.setProperty('--ui-zoom', String(v));
+  const zr = document.getElementById('uiZoomRange');
+  const zn = document.getElementById('uiZoom');
+  if (zr) zr.value = String(v);
+  if (zn) zn.value = String(v);
+  try { localStorage.setItem('uiZoom', String(v)); } catch {}
+}
+// Initialize from storage as early as possible
+document.addEventListener('DOMContentLoaded', () => {
+  const stored = parseFloat(localStorage.getItem('uiZoom') || '1');
+  if (Number.isFinite(stored)) applyUiZoom(stored);
+  const zr = document.getElementById('uiZoomRange');
+  const zn = document.getElementById('uiZoom');
+  if (zr) zr.addEventListener('input', e => applyUiZoom(e.target.value));
+  if (zn) zn.addEventListener('change', e => applyUiZoom(e.target.value));
+});
+
+// Main Now numbers scale controls
+function applyMainStatsScale(val){
+  let v = parseFloat(val);
+  if (!Number.isFinite(v)) v = 1;
+  v = Math.min(2.0, Math.max(0.75, v));
+  document.documentElement.style.setProperty('--mainstats-scale', String(v));
+  const sr = document.getElementById('mainStatsScaleRange');
+  const sn = document.getElementById('mainStatsScale');
+  if (sr) sr.value = String(v);
+  if (sn) sn.value = String(v);
+  try { localStorage.setItem('mainStatsScale', String(v)); } catch {}
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const stored = parseFloat(localStorage.getItem('mainStatsScale') || '1');
+  if (Number.isFinite(stored)) applyMainStatsScale(stored);
+  const sr = document.getElementById('mainStatsScaleRange');
+  const sn = document.getElementById('mainStatsScale');
+  if (sr) sr.addEventListener('input', e => applyMainStatsScale(e.target.value));
+  if (sn) sn.addEventListener('change', e => applyMainStatsScale(e.target.value));
+});
 
 const winRange=$('winSecRange'), winNum=$('winSec');
 function applyWindow(val){ const v=clamp(parseInt(val||'30',10),5,600); winRange.value=v; winNum.value=v; recomputePeaks(); chartTS.update('none'); chartSOG.update('none'); }
@@ -831,6 +966,23 @@ document.addEventListener('DOMContentLoaded', () => {
   if (window.MutationObserver && topbar) {
     const mo = new MutationObserver(() => checkTopbarWidth());
     mo.observe(topbar, { childList: true, subtree: true, attributes: true });
+  }
+
+  // Initialize Now Stats Visibility checkboxes from storage and wire listeners
+  const vis = getNowVisibility();
+  const ids = ['nsHeel','nsTrim','nsSog','nsVmg','nsHdg','nsTwa','nsFreq','nsDstart','nsDtop','nsLatlon'];
+  ids.forEach(k=>{ const el=document.getElementById(k); if(el){ el.checked = !!vis[k]; el.addEventListener('change', ()=>{ const cur=getNowVisibility(); cur[k]=!!el.checked; setNowVisibility(cur); applyNowVisibilityAll(); }); }});
+
+  // Recording: Auto-download CSV setting init
+  const autoCb = document.getElementById('autoDownloadCsv');
+  if (autoCb) {
+    try {
+      const v = localStorage.getItem('autoDownloadCsv');
+      autoCb.checked = (v === null) ? true : (v === 'true');
+    } catch {}
+    autoCb.addEventListener('change', () => {
+      try { localStorage.setItem('autoDownloadCsv', autoCb.checked ? 'true' : 'false'); } catch {}
+    });
   }
 });
 
@@ -1232,7 +1384,26 @@ function connect(){
       if(!unit) unit='unknown';
       if(globalT0===null) globalT0=t;
 
+      // Gate unit creation until enough messages seen within time window
+      if(!units[unit]){
+        const rec = pendingUnits[unit] || (pendingUnits[unit] = { times: [], lastLogCount: 0 });
+        const arr = rec.times;
+        while(arr.length && arr[0] < t - PENDING_WINDOW_MS) arr.shift();
+        arr.push(t);
+        if(arr.length < PENDING_COUNT_THRESHOLD){
+          if(rec.lastLogCount !== arr.length && (arr.length === 1 || arr.length === 5)){
+            log(`confirming new unit '${unit}' (${arr.length}/${PENDING_COUNT_THRESHOLD})`);
+            rec.lastLogCount = arr.length;
+          }
+          return; // do not create/process yet
+        }else{
+          // threshold met; allow creation and clear pending entry
+          delete pendingUnits[unit];
+        }
+      }
+
       const u=ensureUnit(unit);
+      if(!u) return; // guard if max units reached or creation failed
 
       let roll = d.roll_deg, pitch = d.pitch_deg;
       if(typeof roll !== 'number' || typeof pitch !== 'number') {

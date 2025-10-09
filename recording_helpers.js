@@ -58,7 +58,13 @@ function stopRec(){
   saveRecordingsToStorage();
   generateReportsTabs();
 
-  // CSV download with athlete names
+  // CSV download with athlete names (optional)
+  let shouldDownload = true;
+  try {
+    const v = localStorage.getItem('autoDownloadCsv');
+    shouldDownload = (v === null) ? true : (v === 'true');
+  } catch {}
+  if (shouldDownload) {
   const header=['unit_id','athlete','timestamp_ms','iso_time','elapsed_s','seq','roll_deg','pitch_deg','lat','lon','gnss_ms','gnss_iso'];
   const lines=[header.join(',')];
   let topMarkLine = 'top_mark', startPt1Line = 'start_pt1', startPt2Line = 'start_pt2';
@@ -113,6 +119,7 @@ function stopRec(){
   const fname=`trollsports_multi_${d.getFullYear()}-${fmt2(d.getMonth()+1)}-${fmt2(d.getDate())}_${fmt2(d.getHours())}-${fmt2(d.getMinutes())}-${fmt2(d.getSeconds())}.csv`;
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=fname; document.body.appendChild(a); a.click();
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);
+  }
   // recInfo.textContent=`Saved ${recRows.length} samples to ${fname}`; log(`saved CSV (${recRows.length} rows)`);
 }
 
