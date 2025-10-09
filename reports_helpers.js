@@ -162,9 +162,57 @@ function generateReportsTabs() {
   }
 
   if (window._singleAthleteMode.active && window._singleAthleteMode.athleteId) {
-    tabsEl.style.display = 'none';
-    renderSingleAthleteView(contentEl, window._singleAthleteMode.athleteId, window._singleAthleteMode.selected);
+    // Replace Select Report tile contents with single-athlete checkbox selection
+    const tile = document.getElementById('reportSelectTile');
+    const meta = document.getElementById('reportSelectMeta');
+    const sh = document.getElementById('report-athlete-show');
+    if (tabsEl) tabsEl.style.display = 'none';
+    if (meta) meta.style.display = 'none';
+    if (sh) sh.style.display = 'none';
+    if (tile) {
+      // Clear or create container
+      let sat = document.getElementById('singleAthleteTile');
+      if (!sat) { sat = document.createElement('div'); sat.id = 'singleAthleteTile'; tile.appendChild(sat); }
+      sat.innerHTML = '';
+      const athleteId = window._singleAthleteMode.athleteId;
+      const athleteName = getAthleteDisplayName(athleteId);
+      const title = document.createElement('div');
+      title.style.fontWeight = '700';
+      title.style.marginBottom = '8px';
+      title.textContent = `Single Athlete: ${athleteName}`;
+      sat.appendChild(title);
+      // Build list of recordings containing this athlete
+      const candidateRecs = allRecordings.filter(rec => (rec.rows||[]).some(r => r.unit === athleteId));
+      let selectedSet = new Set(Array.isArray(window._singleAthleteMode.selected) ? window._singleAthleteMode.selected : []);
+      if (selectedSet.size === 0 && candidateRecs.length) selectedSet = new Set([candidateRecs[candidateRecs.length-1].id]);
+      window._singleAthleteMode.selected = Array.from(selectedSet);
+      const checks = document.createElement('div');
+      checks.style.display = 'flex'; checks.style.flexWrap = 'wrap'; checks.style.gap = '12px';
+      candidateRecs.forEach((rec, idx) => {
+        const id = rec.id;
+        const label = rec.label && rec.label.trim() ? rec.label : (rec.startedAt? new Date(rec.startedAt).toLocaleTimeString() : `Recording ${idx+1}`);
+        const lab = document.createElement('label'); lab.style.display = 'flex'; lab.style.alignItems = 'center'; lab.style.gap = '6px';
+        const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = selectedSet.has(id);
+        cb.onchange = () => { if (cb.checked) selectedSet.add(id); else selectedSet.delete(id); window._singleAthleteMode.selected = Array.from(selectedSet); renderSingleAthleteCharts(athleteId, Array.from(selectedSet)); };
+        const span = document.createElement('span'); span.textContent = label;
+        lab.appendChild(cb); lab.appendChild(span); checks.appendChild(lab);
+      });
+      sat.appendChild(checks);
+    }
+    // Prepare reportsMain for charts
+    if (contentEl) {
+      contentEl.innerHTML = '<div id="singleAthleteCharts"></div>';
+      renderSingleAthleteCharts(window._singleAthleteMode.athleteId, window._singleAthleteMode.selected);
+    }
     return;
+  } else {
+    // Ensure select tile restored (show elements and remove singleAthleteTile if present)
+    const meta = document.getElementById('reportSelectMeta');
+    const sh = document.getElementById('report-athlete-show');
+    const sat = document.getElementById('singleAthleteTile'); if (sat && sat.parentElement) { try{ sat.remove(); }catch{} }
+    if (tabsEl) tabsEl.style.display = '';
+    if (meta) meta.style.display = '';
+    if (sh) sh.style.display = '';
   }
 
   tabsEl.style.display = '';
@@ -1002,12 +1050,30 @@ function renderSingleAthleteCharts(athleteId, recIds){
   if (!Array.isArray(recIds) || recIds.length === 0) { container.innerHTML = '<div class="small">Select one or more recordings to compare.</div>'; return; }
   // Build filtered rows per recording
   const byRec = {};
+  // Persist stable colors per recording (per athlete) across reselection
+  if (!window._singleAthleteMode) window._singleAthleteMode = {};
+  if (!window._singleAthleteMode.colorMap) window._singleAthleteMode.colorMap = {};
+  if (!window._singleAthleteMode.colorMap[athleteId]) window._singleAthleteMode.colorMap[athleteId] = {};
+  const savedColors = window._singleAthleteMode.colorMap[athleteId];
   const colorMap = {};
-  const cols = (typeof COLORS_BASE !== 'undefined' ? COLORS_BASE : ['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b']);
-  recIds.forEach((rid, i) => {
+  const cols = (typeof COLORS_BASE !== 'undefined' ? COLORS_BASE : ['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b','#e377c2','#7f7f7f','#bcbd22','#17becf']);
+  const used = new Set(Object.values(savedColors));
+  recIds.forEach((rid) => {
     const rec = allRecordings.find(r => r.id === rid); if (!rec) return;
     byRec[rid] = (rec.rows||[]).filter(r => r.unit === athleteId);
-    colorMap[rid] = cols[i % cols.length];
+    // Assign stable color if not already assigned for this athlete+recording
+    if (!savedColors[rid]) {
+      // Prefer a not-yet-used palette color
+      let chosen = cols.find(c => !used.has(c));
+      if (!chosen) {
+        // Fall back: deterministic pick based on current map size
+        const idx = Object.keys(savedColors).length % cols.length;
+        chosen = cols[idx];
+      }
+      savedColors[rid] = chosen;
+      used.add(chosen);
+    }
+    colorMap[rid] = savedColors[rid];
   });
   const plotW = 900, plotH = 200;
   // Build HTML structure similar to normal report

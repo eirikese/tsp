@@ -471,6 +471,20 @@ function applyNowVisibilityToUnit(u){
 }
 function applyNowVisibilityAll(){ for(const id of Object.keys(units)) applyNowVisibilityToUnit(units[id]); }
 
+// Hide Now tile if unit has no data in the last window (winSec seconds)
+function updateNowTileVisibilityForUnit(u){
+  if (!u) return;
+  try{
+    const winNumEl = document.getElementById('winSec');
+    const winSec = parseFloat(winNumEl?.value || '30');
+    const cutoff = Date.now() - (isFinite(winSec) ? winSec*1000 : 30000);
+    const lastT = u.times && u.times.length ? u.times[u.times.length - 1] : 0;
+    const card = u.nowElems?.roll && document.querySelector(`#now-roll-${u.originalName}`)?.closest('.uNums');
+    if (card) card.style.display = (lastT >= cutoff) ? '' : 'none';
+  }catch{}
+}
+function updateNowTileVisibilityAll(){ for(const id of Object.keys(units)) updateNowTileVisibilityForUnit(units[id]); }
+
 // ---------- unit management ----------
 function ensureUnit(unitId){
   if(units[unitId]) return units[unitId];
@@ -567,6 +581,8 @@ setInterval(() => {
     }
     u.nowElems.refreshHz.textContent = hz + ' Hz';
   }
+  // Also update Now tile visibility on this cadence
+  updateNowTileVisibilityAll();
 }, 333);
 
   // Stats card
@@ -694,7 +710,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 const winRange=$('winSecRange'), winNum=$('winSec');
-function applyWindow(val){ const v=clamp(parseInt(val||'30',10),5,600); winRange.value=v; winNum.value=v; recomputePeaks(); chartTS.update('none'); chartSOG.update('none'); }
+function applyWindow(val){ const v=clamp(parseInt(val||'30',10),5,600); winRange.value=v; winNum.value=v; recomputePeaks(); chartTS.update('none'); chartSOG.update('none'); updateNowTileVisibilityAll(); }
 winRange.addEventListener('input',e=>applyWindow(e.target.value));
 winNum.addEventListener('change',e=>applyWindow(e.target.value));
 
@@ -1312,7 +1328,7 @@ document.getElementById('btnUnlock').addEventListener('click',async ()=>{
     })();
 
     setStatus('unlocked — not connected',false);
-    applyWindow(document.getElementById('winSec').value); applyViewWindow(document.getElementById('viewSec').value);
+  applyWindow(document.getElementById('winSec').value); applyViewWindow(document.getElementById('viewSec').value); updateNowTileVisibilityAll();
 
     // Apply default chart settings
     applyChartDefaults();
@@ -1424,6 +1440,8 @@ function connect(){
 
       // raw arrival buffers
   u.times.push(t); u.roll.push(roll); u.pitch.push(pitch);
+  // Update Now tile visibility for this unit
+  updateNowTileVisibilityForUnit(u);
   if(u.nowElems.roll) u.nowElems.roll.textContent = roll.toFixed(1);
   if(u.nowElems.pitch) u.nowElems.pitch.textContent = pitch.toFixed(1);
 
@@ -1448,6 +1466,7 @@ function connect(){
           if (globalT0 != null) {
             const xPlot = (t - globalT0) / 1000;
             u.sogTimes.push(t); u.sogVals.push(sog_kt); u.sogSeries.push({ x: xPlot, y: sog_kt });
+            updateNowTileVisibilityForUnit(u);
           }
         } else {
           u.sogEMA = null;
@@ -1499,6 +1518,7 @@ function connect(){
               if (globalT0 != null) {
                 const xPlot = (t - globalT0) / 1000;
                 u.vmgTimes.push(t); u.vmgVals.push(vmg); u.vmgSeries.push({ x: xPlot, y: vmg });
+                updateNowTileVisibilityForUnit(u);
               }
             }
           }
