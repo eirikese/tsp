@@ -242,6 +242,24 @@ function parseCsvTextToRecording(csvText, fileName='import.csv'){
   const lines = csvText.replace(/\r\n?/g, '\n').split('\n').filter(l=>l.trim().length>0);
   if (lines.length === 0) return null;
   // parsing continues...
+  // Detect header row (first line containing core column names)
+  let headerLineIndex = lines.findIndex(l => {
+    const ll = l.toLowerCase();
+    return ll.includes('timestamp_ms') || ll.includes('iso_time') || ll.includes('elapsed_s');
+  });
+  if (headerLineIndex < 0) headerLineIndex = 0;
+  const header = lines[headerLineIndex].split(',').map(h => h.trim().toLowerCase());
+  function idx(names){
+    if (!Array.isArray(names)) names = [names];
+    for (const n of names){
+      const k = String(n).trim().toLowerCase();
+      const i = header.indexOf(k);
+      if (i !== -1) return i;
+    }
+    return -1;
+  }
+  // Column indices (support a few aliases for robustness)
+  const cUnit = idx(['unit_id','unit','unitid']);
   const cAthlete = idx(['athlete','athlete_name']);
   const cTsMs = idx(['timestamp_ms','ts_ms','time_ms']);
   const cIso = idx(['iso_time','iso','time_iso']);
@@ -1196,7 +1214,8 @@ function triggerCsvDownload(csvText, filename){
   setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 }
 function buildCsvHeader(){
-  return ['unit_id','athlete','timestamp_ms','iso_time','elapsed_s','seq','roll_deg','pitch_deg','lat','lon','gnss_ms','gnss_iso'].join(',');
+  // Include optional sog_mps and heading_deg so imports preserve device speed/heading if present
+  return ['unit_id','athlete','timestamp_ms','iso_time','elapsed_s','seq','roll_deg','pitch_deg','lat','lon','gnss_ms','gnss_iso','sog_mps','heading_deg'].join(',');
 }
 function buildCsvForRecording(rec){
   if(!rec || !Array.isArray(rec.rows)) return '';
@@ -1235,7 +1254,9 @@ function buildCsvForRecording(rec){
       (Number.isFinite(r.lat)?r.lat.toFixed(6):''),
       (Number.isFinite(r.lon)?r.lon.toFixed(6):''),
       (r.gnss_ms??''),
-      (r.gnss_iso?`"${r.gnss_iso.replace(/"/g,'""')}"`:'')
+      (r.gnss_iso?`"${r.gnss_iso.replace(/"/g,'""')}"`:'') ,
+      (Number.isFinite(r.sog_mps)?r.sog_mps.toFixed(3):''),
+      (Number.isFinite(r.heading_deg)?r.heading_deg.toFixed(1):'')
     ].join(','));
   }
   return lines.join('\n');
