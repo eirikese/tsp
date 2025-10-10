@@ -32,6 +32,11 @@ function generateReportsTabs() {
         contentEl.innerHTML = '<div class="small">Import failed or contained no samples.</div>';
         return;
       }
+      try{ rec._hash = await computeSHA256Hex(text); }catch{}
+      if (shouldSkipDuplicate(rec)) {
+  contentEl.innerHTML = '<div class="small">Skipped duplicate recording (Settings → Import & Transfer → Skip duplicates is ON).</div>';
+        return;
+      }
       allRecordings.push(rec);
       if (typeof saveRecordingsToStorage === 'function') saveRecordingsToStorage();
       generateReportsTabs();
@@ -44,6 +49,8 @@ function generateReportsTabs() {
     }
   });
   (actionsEl || tabsEl).appendChild(_importFileInput);
+  // Expose import file input for CSV menu
+  window._importCsvFileInput = _importFileInput;
   const _importBtn = document.createElement('button');
   _importBtn.textContent = 'Import CSV';
   _importBtn.className = 'small';
@@ -108,46 +115,73 @@ function generateReportsTabs() {
       };
       actionsEl.appendChild(renBtn);
 
-      const dlSelectedBtn = document.createElement('button');
-      dlSelectedBtn.textContent = 'Download CSV (selected)';
-      dlSelectedBtn.className = 'small';
-      dlSelectedBtn.onclick = function(){
-        const activeBtn = tabsEl.querySelector('.tabbtn.active');
-        if(!activeBtn) return; const recId = activeBtn.dataset.recId;
-        const rec = allRecordings.find(r=>r.id===recId); if(!rec) return;
-        try{ const csv = buildCsvForRecording(rec); triggerCsvDownload(csv, makeCsvFilename(rec)); }catch(e){ console.warn('CSV build failed', e); }
-      };
-      actionsEl.appendChild(dlSelectedBtn);
+      // CSV menu
+      const csvBtn = document.createElement('button');
+      csvBtn.textContent = 'CSV';
+      csvBtn.className = 'small';
+      csvBtn.onclick = () => openCsvActionsMenu();
+      actionsEl.appendChild(csvBtn);
 
-      const dlAllBtn = document.createElement('button');
-      dlAllBtn.textContent = 'Download CSV (all)';
-      dlAllBtn.className = 'small';
-      dlAllBtn.title = 'Downloads each CSV separately. Your browser may ask to allow multiple downloads.';
-      dlAllBtn.onclick = function(){
-        if(!Array.isArray(allRecordings) || allRecordings.length===0) return;
-        let i = 0;
-        const next = () => {
-          if (i >= allRecordings.length) return;
-          try{
-            const rec = allRecordings[i];
-            const csv = buildCsvForRecording(rec);
-            const fname = makeCsvFilename(rec);
-            triggerCsvDownload(csv, fname);
-          }catch(e){ console.warn('CSV download failed', e); }
-          i++;
-          setTimeout(next, 250);
-        };
-        next();
+      // Utility: get import duplicate-skip setting
+      const isSkipDup = () => {
+        try{ const v = localStorage.getItem('skipDupImport'); return v===null ? true : (v==='true'); }catch{ return true; }
       };
-      actionsEl.appendChild(dlAllBtn);
+      const isVerify = () => {
+        try{ const v = localStorage.getItem('verifyTransfer'); return v===null ? true : (v==='true'); }catch{ return true; }
+      };
+      // Utility: naive duplicate check without hash
+      function approxDuplicate(rec){
+        try{
+          const label = (rec.label||'');
+          const n = (rec.rows||[]).length;
+          const t0 = n? rec.rows[0].t : rec.startedAt;
+          const t1 = n? rec.rows[n-1].t : rec.startedAt;
+          return allRecordings.some(r=>{
+            const rn = (r.rows||[]).length;
+            const rl = (r.label||'');
+            const rt0 = rn? r.rows[0].t : r.startedAt;
+            const rt1 = rn? r.rows[rn-1].t : r.startedAt;
+            return rl===label && rn===n && rt0===t0 && rt1===t1;
+          });
+        }catch{ return false; }
+      }
+      // Public helper used by import paths
+      window.shouldSkipDuplicate = function(rec){
+        if (!isSkipDup()) return false;
+        try{
+          if (rec && rec._hash) {
+            // If any existing has same _hash, skip
+            const exists = allRecordings.some(r=> r && r._hash && r._hash===rec._hash);
+            if (exists) return true;
+          }
+        }catch{}
+        return approxDuplicate(rec);
+      }
+      // Hash helper
+      window.computeSHA256Hex = async function(str){
+        const enc = new TextEncoder();
+        const data = enc.encode(str);
+        const digest = await crypto.subtle.digest('SHA-256', data);
+        const bytes = Array.from(new Uint8Array(digest));
+        return bytes.map(b=> b.toString(16).padStart(2,'0')).join('');
+      }
 
-      actionsEl.appendChild(_importBtn);
+      // Backend integration: single Server button with menu
+  const serverBtn = document.createElement('button');
+  serverBtn.textContent = 'Backup';
+      serverBtn.className = 'small';
+      serverBtn.onclick = () => openServerActionsMenu();
+      actionsEl.appendChild(serverBtn);
+
+      // Removed individual server buttons in favor of the Server menu
 
       const singleBtn = document.createElement('button');
       singleBtn.textContent = 'Select single athlete';
       singleBtn.className = 'small';
+      singleBtn.title = 'Open athlete picker and focus reports on one athlete';
       singleBtn.onclick = () => openAthleteModal();
-      actionsEl.appendChild(singleBtn);
+      // Move this control to the Select Report tile (tabs row)
+      if (tabsEl) tabsEl.appendChild(singleBtn);
     }
   }
 
@@ -977,6 +1011,262 @@ function showReportFor(recId) {
 // make available to other modules
 window.generateReportsTabs = generateReportsTabs;
 window.showReportFor = showReportFor;
+
+// -------- Server Load Modal --------
+function formatDateKey(iso){ try{ const d=new Date(iso); if(!isNaN(d)) return d.toISOString().slice(0,10); }catch{} return 'Unknown'; }
+function formatTimeHM(iso){ try{ const d=new Date(iso); if(!isNaN(d)) { const h=String(d.getHours()).padStart(2,'0'); const m=String(d.getMinutes()).padStart(2,'0'); return `${h}:${m}`; } }catch{} return ''; }
+function humanSize(n){ if(!(n>0)) return ''; const kb = n/1024; if(kb<1024) return `${Math.round(kb)} KB`; const mb=kb/1024; return `${mb.toFixed(1)} MB`; }
+function closeServerLoadModal(){ const ov=document.getElementById('serverLoadModalOverlay'); if(ov&&ov.parentElement){ try{ ov.remove(); }catch{} } }
+async function openServerLoadModal(){
+  const base = (localStorage.getItem('backend_base_url') || 'http://localhost:8000').replace(/\/$/,'');
+  // Fetch list
+  let items=[]; try{ const resp=await fetch(base+'/api/recordings'); if(resp.ok){ const j=await resp.json(); items=(j.items||[]); } }catch(e){ alert('Failed to reach server.'); return; }
+  if(!items.length){ alert('No recordings on server.'); return; }
+  // Group by date
+  const byDate = {}; const byId = {};
+  items.forEach(it=>{ const k=formatDateKey(it.updated_at||it.created_at||new Date().toISOString()); if(!byDate[k]) byDate[k]=[]; byDate[k].push(it); byId[it.id]=it; });
+  const dates = Object.keys(byDate).sort().reverse();
+  // Build modal
+  if (document.getElementById('serverLoadModalOverlay')) { try{ document.getElementById('serverLoadModalOverlay').remove(); }catch{} }
+  const overlay = document.createElement('div'); overlay.id='serverLoadModalOverlay'; overlay.className='modal-overlay'; overlay.addEventListener('click', e=>{ if(e.target===overlay) closeServerLoadModal(); });
+  const dialog = document.createElement('div'); dialog.className='modal-dialog'; dialog.setAttribute('role','dialog'); dialog.setAttribute('aria-modal','true'); dialog.style.maxWidth='820px'; dialog.style.width='90%';
+  const header = document.createElement('div'); header.className='modal-header';
+  const title = document.createElement('div'); title.className='modal-title'; title.textContent='Load from server';
+  const closeBtn = document.createElement('button'); closeBtn.className='modal-close'; closeBtn.innerHTML='✕'; closeBtn.onclick=closeServerLoadModal;
+  header.appendChild(title); header.appendChild(closeBtn);
+  const body = document.createElement('div'); body.className='modal-content';
+  // Layout: left date buttons, right list for selected date
+  const wrap = document.createElement('div'); wrap.style.display='grid'; wrap.style.gridTemplateColumns='200px 1fr'; wrap.style.gap='12px';
+  const left = document.createElement('div'); left.style.display='flex'; left.style.flexDirection='column'; left.style.gap='8px';
+  const right = document.createElement('div'); right.style.display='flex'; right.style.flexDirection='column'; right.style.gap='8px'; right.style.maxHeight='50vh'; right.style.overflow='auto';
+  wrap.appendChild(left); wrap.appendChild(right); body.appendChild(wrap);
+  // Footer
+  const footer = document.createElement('div'); footer.className='modal-footer'; footer.style.display='flex'; footer.style.justifyContent='flex-end'; footer.style.gap='8px';
+  const cancelBtn = document.createElement('button'); cancelBtn.textContent='Cancel'; cancelBtn.onclick=closeServerLoadModal;
+  const loadBtn = document.createElement('button'); loadBtn.textContent='Load'; loadBtn.style.background='var(--accent)'; loadBtn.style.color='#fff';
+  footer.appendChild(cancelBtn); footer.appendChild(loadBtn);
+
+  dialog.appendChild(header); dialog.appendChild(body); dialog.appendChild(footer); overlay.appendChild(dialog); document.body.appendChild(overlay);
+
+  // State
+  let currentDate = dates[0];
+  const selected = new Set();
+  // Render dates
+  function renderDates(){
+    left.innerHTML='';
+    dates.forEach(dk=>{
+      const b=document.createElement('button'); b.className='modal-item'; b.textContent=dk; b.style.textAlign='left'; b.style.justifyContent='flex-start';
+      if(dk===currentDate){ b.style.background='var(--accent)'; b.style.color='#fff'; }
+      b.onclick=()=>{ currentDate=dk; renderDates(); renderDayList(); };
+      left.appendChild(b);
+    });
+  }
+  // Render recordings for currentDate
+  function renderDayList(){
+    right.innerHTML='';
+    const list = byDate[currentDate]||[];
+    // Day header with Select All
+    const head = document.createElement('div'); head.style.display='flex'; head.style.alignItems='center'; head.style.justifyContent='space-between';
+    const hleft = document.createElement('div'); hleft.innerHTML = `<b>${currentDate}</b> — ${list.length} file(s)`;
+    const hright = document.createElement('label'); hright.style.display='flex'; hright.style.alignItems='center'; hright.style.gap='6px';
+    const selAll = document.createElement('input'); selAll.type='checkbox';
+    // Initialize select-all checkbox based on whether all items of day are selected
+    selAll.checked = list.every(it=> selected.has(it.id));
+    selAll.onchange = ()=>{
+      if(selAll.checked){ list.forEach(it=> selected.add(it.id)); } else { list.forEach(it=> selected.delete(it.id)); }
+      renderDayList();
+    };
+    const sal = document.createElement('span'); sal.textContent='Load all';
+    hright.appendChild(selAll); hright.appendChild(sal); head.appendChild(hleft); head.appendChild(hright); right.appendChild(head);
+    // Items
+    const ul=document.createElement('div'); ul.style.display='flex'; ul.style.flexDirection='column'; ul.style.gap='6px'; ul.style.marginTop='8px';
+    list.forEach(it=>{
+      const row=document.createElement('label'); row.style.display='grid'; row.style.gridTemplateColumns='24px 1fr auto'; row.style.alignItems='center'; row.style.gap='8px'; row.style.padding='6px 4px'; row.style.border='1px solid #eee'; row.style.borderRadius='6px';
+      const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=selected.has(it.id); cb.onchange=()=>{ if(cb.checked) selected.add(it.id); else selected.delete(it.id); };
+      const name=document.createElement('div'); name.className='small';
+      const label = it.label && it.label.trim() ? it.label : (it.filename || it.id);
+      name.textContent = `${formatTimeHM(it.updated_at || it.created_at)}  •  ${label}`;
+      const meta=document.createElement('div'); meta.className='tiny'; meta.textContent=humanSize(it.size_bytes||0);
+      row.appendChild(cb); row.appendChild(name); row.appendChild(meta);
+      ul.appendChild(row);
+    });
+    right.appendChild(ul);
+  }
+  renderDates(); renderDayList();
+
+  // Load selected on click
+  loadBtn.onclick = async ()=>{
+    if (selected.size===0){ alert('No recordings selected.'); return; }
+    loadBtn.disabled=true; cancelBtn.disabled=true; loadBtn.textContent='Loading…';
+    const ids=Array.from(selected);
+    let imported=0, skipped=0, failed=0; let lastRecId=null;
+    const verifyOn = (function(){ try{ const v=localStorage.getItem('verifyTransfer'); return v===null? true : (v==='true'); }catch{ return true; } })();
+    for (const id of ids){
+      try{
+        const it = byId[id];
+        const respCsv = await fetch(base + '/api/recordings/'+encodeURIComponent(id)+'/csv');
+        if(!respCsv.ok) throw new Error('download failed');
+        const text = await respCsv.text();
+        if (verifyOn){
+          const hdrSha = respCsv.headers.get('X-Content-SHA256') || respCsv.headers.get('ETag') || (it?.sha256 || '');
+          if (hdrSha){ try{ const calc=await computeSHA256Hex(text); if(calc && hdrSha && calc.toLowerCase()!==hdrSha.toLowerCase()){ failed++; continue; } }catch{}
+          }
+        }
+        const rec = parseCsvTextToRecording(text, it.filename||('server-'+it.id+'.csv'));
+        try{ rec._hash = await computeSHA256Hex(text); }catch{}
+        if (window.shouldSkipDuplicate && window.shouldSkipDuplicate(rec)){ skipped++; continue; }
+        if(!rec){ failed++; continue; }
+        rec.label = it.label || rec.label || it.filename || it.id;
+        allRecordings.push(rec); imported++; lastRecId = rec.id;
+      }catch{ failed++; }
+    }
+    try{ saveRecordingsToStorage(); }catch{}
+    try{ generateReportsTabs(); if(lastRecId) setTimeout(()=>{ try{ showReportFor(lastRecId); }catch{} }, 0); }catch{}
+    closeServerLoadModal();
+  if (failed>0 || skipped>0){ alert(`Loaded: ${imported}\nskipped: ${skipped}\nfailed: ${failed}`); }
+  };
+}
+
+// -------- CSV Actions Menu --------
+function openCsvActionsMenu(){
+  if (document.getElementById('csvActionsOverlay')) { try{ document.getElementById('csvActionsOverlay').remove(); }catch{} }
+  const overlay = document.createElement('div'); overlay.id='csvActionsOverlay'; overlay.className='modal-overlay'; overlay.addEventListener('click', e=>{ if(e.target===overlay) close(); });
+  const dialog = document.createElement('div'); dialog.className='modal-dialog'; dialog.style.maxWidth='420px'; dialog.style.width='90%';
+  const header = document.createElement('div'); header.className='modal-header';
+  const title = document.createElement('div'); title.className='modal-title'; title.textContent='CSV';
+  const closeBtn = document.createElement('button'); closeBtn.className='modal-close'; closeBtn.innerHTML='✕'; closeBtn.onclick=close;
+  header.appendChild(title); header.appendChild(closeBtn);
+  const content = document.createElement('div'); content.className='modal-content';
+  const list = document.createElement('div'); list.className='modal-list';
+  const b1 = document.createElement('button'); b1.className='modal-item'; b1.textContent='Import CSV'; b1.onclick=()=>{ close(); const fi=window._importCsvFileInput; if(fi) fi.click(); else alert('Import not available'); };
+  const b2 = document.createElement('button'); b2.className='modal-item'; b2.textContent='Download CSV (selected)'; b2.onclick=()=>{ close(); downloadSelectedCsv(); };
+  const b3 = document.createElement('button'); b3.className='modal-item'; b3.textContent='Download CSV (all)'; b3.onclick=()=>{ close(); downloadAllCsvs(); };
+  list.appendChild(b1); list.appendChild(b2); list.appendChild(b3); content.appendChild(list);
+  dialog.appendChild(header); dialog.appendChild(content); overlay.appendChild(dialog); document.body.appendChild(overlay);
+  function close(){ const ov=document.getElementById('csvActionsOverlay'); if(ov&&ov.parentElement){ try{ ov.remove(); }catch{} } }
+}
+
+function downloadSelectedCsv(){
+  try{
+    const tabsEl = document.getElementById('reportSelectButtons');
+    const activeBtn = tabsEl && tabsEl.querySelector('.tabbtn.active');
+    if(!activeBtn){ alert('No report selected.'); return; }
+    const recId = activeBtn.dataset.recId;
+    const rec = allRecordings.find(r=>r.id===recId); if(!rec){ alert('Selected report not found.'); return; }
+    const csv = buildCsvForRecording(rec);
+    triggerCsvDownload(csv, makeCsvFilename(rec));
+  }catch(e){ console.warn('CSV build failed', e); alert('Download failed.'); }
+}
+
+function downloadAllCsvs(){
+  if(!Array.isArray(allRecordings) || allRecordings.length===0){ alert('No recordings available.'); return; }
+  let i = 0;
+  const next = () => {
+    if (i >= allRecordings.length) return;
+    try{
+      const rec = allRecordings[i];
+      const csv = buildCsvForRecording(rec);
+      const fname = makeCsvFilename(rec);
+      triggerCsvDownload(csv, fname);
+    }catch(e){ console.warn('CSV download failed', e); }
+    i++;
+    setTimeout(next, 250);
+  };
+  next();
+}
+
+// -------- Backup All helper --------
+async function backupAllToServer(){
+  try{
+    const base = (localStorage.getItem('backend_base_url') || 'http://localhost:8000').replace(/\/$/,'');
+    const verifyOn = (function(){ try{ const v=localStorage.getItem('verifyTransfer'); return v===null? true : (v==='true'); }catch{ return true; } })();
+    // Server index by filename
+    let serverIdx = {};
+    try{
+      const respIdx = await fetch(base + '/api/recordings');
+      if (respIdx.ok){ const j = await respIdx.json(); (j.items||[]).forEach(it=>{ serverIdx[it.filename||''] = { size: it.size_bytes||0, sha256: it.sha256||'' }; }); }
+    }catch{}
+    let uploaded=0, skipped=0, failed=0;
+    for (const rec of allRecordings){
+      try{
+        const csv = buildCsvForRecording(rec);
+        const fname = makeCsvFilename(rec);
+        const size = new Blob([csv]).size;
+        if (verifyOn && serverIdx[fname] && serverIdx[fname].sha256){
+          try{ const calc=await computeSHA256Hex(csv); if(calc && calc.toLowerCase()===serverIdx[fname].sha256.toLowerCase()){ skipped++; continue; } }catch{}
+        } else if (serverIdx[fname] && serverIdx[fname].size === size){ skipped++; continue; }
+        const fd = new FormData();
+        fd.append('file', new File([csv], fname, {type:'text/csv'}));
+        if (rec.label && rec.label.trim()) fd.append('label', rec.label.trim());
+        const resp = await fetch(base + '/api/recordings', { method:'POST', body: fd });
+        if (!resp.ok) { failed++; continue; }
+        if (verifyOn){
+          try{ const calc=await computeSHA256Hex(csv); const j=await resp.json(); const srvHash=(j&&j.meta&&j.meta.sha256)?j.meta.sha256:''; if(srvHash && calc && srvHash.toLowerCase()!==calc.toLowerCase()){ alert('Upload verification failed for '+fname+': server hash differs from local.'); } }catch{}
+        }
+        uploaded++;
+      }catch{ failed++; }
+    }
+    alert(`Backup complete.\nUploaded: ${uploaded}\nskipped: ${skipped}\nfailed: ${failed}`);
+  }catch(e){ alert('Backup-all failed: '+(e?.message||e)); }
+}
+
+// -------- Server Actions Menu --------
+function openServerActionsMenu(){
+  if (document.getElementById('serverActionsOverlay')) { try{ document.getElementById('serverActionsOverlay').remove(); }catch{} }
+  const overlay = document.createElement('div'); overlay.id='serverActionsOverlay'; overlay.className='modal-overlay'; overlay.addEventListener('click', e=>{ if(e.target===overlay) close(); });
+  const dialog = document.createElement('div'); dialog.className='modal-dialog'; dialog.style.maxWidth='420px'; dialog.style.width='90%';
+  const header = document.createElement('div'); header.className='modal-header';
+  const title = document.createElement('div'); title.className='modal-title'; title.textContent='Backup';
+  const closeBtn = document.createElement('button'); closeBtn.className='modal-close'; closeBtn.innerHTML='✕'; closeBtn.onclick=close;
+  header.appendChild(title); header.appendChild(closeBtn);
+  const content = document.createElement('div'); content.className='modal-content';
+  const list = document.createElement('div'); list.className='modal-list';
+  const b1 = document.createElement('button'); b1.className='modal-item'; b1.textContent='Back up local files to server'; b1.onclick=async()=>{ close(); await backupAllToServer(); };
+  const b2 = document.createElement('button'); b2.className='modal-item'; b2.textContent='Load from server'; b2.onclick=()=>{ close(); openServerLoadModal(); };
+  const b3 = document.createElement('button'); b3.className='modal-item'; b3.textContent='Manage server files'; b3.onclick=()=>{ close(); openServerManageModal(); };
+  list.appendChild(b1); list.appendChild(b2); list.appendChild(b3); content.appendChild(list);
+  dialog.appendChild(header); dialog.appendChild(content); overlay.appendChild(dialog); document.body.appendChild(overlay);
+  function close(){ const ov=document.getElementById('serverActionsOverlay'); if(ov&&ov.parentElement){ try{ ov.remove(); }catch{} } }
+}
+
+// -------- Server Manage Modal --------
+async function openServerManageModal(){
+  const base = (localStorage.getItem('backend_base_url') || 'http://localhost:8000').replace(/\/$/,'');
+  let items=[]; try{ const resp=await fetch(base+'/api/recordings'); if(resp.ok){ const j=await resp.json(); items=(j.items||[]); } }catch(e){ alert('Failed to reach server.'); return; }
+  if(!items.length){ alert('No recordings on server.'); return; }
+  const overlay = document.createElement('div'); overlay.id='serverManageOverlay'; overlay.className='modal-overlay'; overlay.addEventListener('click', e=>{ if(e.target===overlay) close(); });
+  const dialog = document.createElement('div'); dialog.className='modal-dialog'; dialog.style.maxWidth='820px'; dialog.style.width='90%';
+  const header = document.createElement('div'); header.className='modal-header';
+  const title = document.createElement('div'); title.className='modal-title'; title.textContent='Manage server files';
+  const closeBtn = document.createElement('button'); closeBtn.className='modal-close'; closeBtn.innerHTML='✕'; closeBtn.onclick=close;
+  header.appendChild(title); header.appendChild(closeBtn);
+  const body = document.createElement('div'); body.className='modal-content';
+  const table = document.createElement('div'); table.style.display='grid'; table.style.gridTemplateColumns='1fr auto auto'; table.style.gap='8px';
+  // Header row
+  table.appendChild(makeCell('File', true)); table.appendChild(makeCell('Rename', true)); table.appendChild(makeCell('Delete', true));
+  // Rows
+  items.forEach(it=>{
+    const label = it.label && it.label.trim()? it.label : (it.filename || it.id);
+    table.appendChild(makeCell(label));
+    const rn = document.createElement('button'); rn.className='small'; rn.textContent='Rename'; rn.onclick=async()=>{ await renameItem(it.id, label); await refresh(); };
+    const del = document.createElement('button'); del.className='small'; del.textContent='Delete'; del.onclick=async()=>{ if(confirm('Delete this file from server?')){ await deleteItem(it.id); await refresh(); } };
+    table.appendChild(rn); table.appendChild(del);
+  });
+  body.appendChild(table);
+  dialog.appendChild(header); dialog.appendChild(body); overlay.appendChild(dialog); document.body.appendChild(overlay);
+
+  async function refresh(){ try{ overlay.remove(); }catch{} openServerManageModal(); }
+  function close(){ const ov=document.getElementById('serverManageOverlay'); if(ov&&ov.parentElement){ try{ ov.remove(); }catch{} } }
+  function makeCell(text, header=false){ const d=document.createElement('div'); d.textContent=text; d.className= header? 'small' : ''; return d; }
+  async function deleteItem(id){ try{ await fetch(base+'/api/recordings/'+encodeURIComponent(id), { method:'DELETE' }); }catch{} }
+  async function renameItem(id, current){
+    const name = prompt('Enter new label for this file:', current || ''); if(!name || !name.trim()) return;
+    try{
+      const resp = await fetch(base+'/api/recordings/'+encodeURIComponent(id), { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ label: name.trim() }) });
+      if(!resp.ok){ alert('Rename failed'); }
+    }catch{ alert('Rename failed'); }
+  }
+}
 
 // ---------- Single Athlete Mode ----------
 function getAthleteDisplayName(unitId){

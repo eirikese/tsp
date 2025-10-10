@@ -5,6 +5,8 @@
 --card-pad: clamp(12px, 2vw, 16px);
 /* global UI zoom factor (1 = 100%) */
 --ui-zoom: 1;
+/* button scale factor (1 = 100%) */
+--btn-scale: 1;
 /* main stats (Heel/Trim/SOG/VMG) scale multiplier */
 --mainstats-scale: 1;
 
@@ -20,7 +22,7 @@
 --topbar1:#ffffff;
 --topbar2:#f6f7fb;
 --btn:#f2f6ff;
---btn-active:#e6effe;
+--btn-active:#b7d1ff;
 --input:#f8fbff;
 --chart-text:#000000;
 --chart-grid:#e0e0e0;
@@ -32,7 +34,7 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-serif,s
 body{ zoom: var(--ui-zoom); }
 .topbar{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:10px;padding:calc(8px + env(safe-area-inset-top)) var(--pad) 8px;background:linear-gradient(180deg,var(--topbar1),var(--topbar2));border-bottom:1px solid var(--border)}
 .app-title{font-weight:700}.spacer{flex:1}.ver{color:var(--muted);font-size:12px}
-.tabs{display:flex;gap:6px}.tabbtn{padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:var(--btn);color:var(--text);cursor:pointer;font-weight:600}
+.tabs{display:flex;gap:6px}.tabbtn{padding:calc(9px * var(--btn-scale)) calc(13px * var(--btn-scale));border-radius:10px;border:1px solid var(--border);background:var(--btn);color:var(--text);cursor:pointer;font-weight:600;font-size:calc(14px * var(--btn-scale))}
 /* Wrap report selection buttons to new rows when overflowing */
 #reportSelectButtons{flex-wrap:wrap}
 .tabbtn.active{background:var(--btn-active);border-color:var(--border)}
@@ -54,7 +56,9 @@ body{ zoom: var(--ui-zoom); }
 .small{font-size:12px;color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
 .num{font-weight:700;font-size:clamp(22px,5.8vw,34px);line-height:1.15}
 .btns{display:flex;flex-wrap:wrap;gap: calc(var(--gap) - 2px); margin-top: var(--gap)} 
-button{padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--btn);color:var(--text);cursor:pointer}
+button{padding:calc(11px * var(--btn-scale)) calc(15px * var(--btn-scale));border-radius:10px;border:1px solid var(--border);background:var(--btn);color:var(--text);cursor:pointer;font-size:calc(14px * var(--btn-scale))}
+/* Scale font for small-styled buttons only, not all .small text */
+button.small{font-size:calc(12px * var(--btn-scale));}
 input,select{width:auto;min-width:0;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--input);color:var(--text);max-width:100%;overflow-wrap:break-word;}
 input[type="number"],input[type="checkbox"]{width:auto;min-width:0;}
 label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;max-width:100%;overflow-wrap:break-word;}
@@ -97,10 +101,10 @@ margin-top: 32px;
 .modal-dialog{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:0 8px 40px rgba(0,0,0,.35);width:min(680px, 92vw);max-height:85vh;display:flex;flex-direction:column}
 .modal-header{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border)}
 .modal-title{font-weight:700}
-.modal-close{background:var(--btn);border:1px solid var(--border);border-radius:10px;padding:6px 10px;cursor:pointer}
+.modal-close{background:var(--btn);border:1px solid var(--border);border-radius:10px;padding:calc(7px * var(--btn-scale)) calc(11px * var(--btn-scale));cursor:pointer;font-size:calc(14px * var(--btn-scale))}
 .modal-content{padding:14px;overflow:auto}
 .modal-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
-.modal-item{padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--btn);cursor:pointer;text-align:left}
+.modal-item{padding:calc(11px * var(--btn-scale)) calc(13px * var(--btn-scale));border-radius:10px;border:1px solid var(--border);background:var(--btn);cursor:pointer;text-align:left;font-size:calc(14px * var(--btn-scale))}
 
 /* Densities */
 .dgrid{display:grid;grid-template-columns:1fr;gap: var(--gap);margin-top: var(--gap)}

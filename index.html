@@ -177,24 +177,27 @@
     <section id="tab-settings" class="hidden">
       <div class="row">
 
-        <!-- Units Configuration -->
+        <!-- Athletes: Configuration & Visibility (merged) -->
         <div class="card half">
-          <div style="font-weight:700;margin-bottom:8px;">Athlete Configuration</div>
-          <div id="unitsConfig" class="grid" style="grid-template-columns:1fr;gap:12px">
-            <!-- Dynamic content here -->
-          </div>
-          <div class="btns" style="margin-top:12px;">
-            <button id="saveUnitConfig">Save Configuration</button>
-          </div>
-          <div id="configStatus" class="small" style="margin-top:8px;"></div>
-        </div>
-
-        <!-- Units Visibility -->
-        <div class="card half">
-          <div style="font-weight:700;margin-bottom:8px;">Units Visibility</div>
-          <div id="unitsList" class="grid" style="grid-template-columns:1fr;gap:8px"></div>
-          <div class="btns" style="margin-top:12px;">
-            <button id="btnClear">Clear Data</button>
+          <div style="font-weight:700;margin-bottom:8px;">Athletes</div>
+          <div class="grid" style="grid-template-columns:1fr;gap:16px;">
+            <div>
+              <div class="small" style="font-weight:700;margin-bottom:6px;">Athlete Configuration</div>
+              <div id="unitsConfig" class="grid" style="grid-template-columns:1fr;gap:12px">
+                <!-- Dynamic content here -->
+              </div>
+              <div class="btns" style="margin-top:12px;">
+                <button id="saveUnitConfig">Save Configuration</button>
+              </div>
+              <div id="configStatus" class="small" style="margin-top:8px;"></div>
+            </div>
+            <div>
+              <div class="small" style="font-weight:700;margin-bottom:6px;">Units Visibility</div>
+              <div id="unitsList" class="grid" style="grid-template-columns:1fr;gap:8px"></div>
+              <div class="btns" style="margin-top:12px;">
+                <button id="btnClear">Clear Data</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -203,7 +206,7 @@
           <div style="font-weight:700;margin-bottom:8px;">Scaling</div>
           <div class="grid" style="grid-template-columns:1fr;gap:12px;">
             <div style="grid-column:1/-1;">
-              <label>Scale (0.75–1.5)</label>
+              <label>Overall Page scale (0.75–1.5)</label>
               <div class="range-row">
                 <input id="uiZoomRange" type="range" min="0.75" max="1.5" step="0.05" value="1"/>
                 <input id="uiZoom" type="number" min="0.75" max="1.5" step="0.05" value="1" style="width:90px"/>
@@ -216,8 +219,15 @@
                 <input id="mainStatsScale" type="number" min="0.75" max="2.0" step="0.05" value="1" style="width:90px"/>
               </div>
             </div>
+            <div style="grid-column:1/-1;">
+              <label for="btnScale">Buttons Scale (0.8–1.5)</label>
+              <div class="range-row">
+                <input id="btnScale" type="range" min="0.8" max="1.5" step="0.05" value="1"/>
+                <input id="btnScaleVal" type="number" min="0.8" max="1.5" step="0.05" value="1" style="width:90px"/>
+              </div>
+            </div>
           </div>
-          <div class="tiny" style="margin-top:6px;">Tip: UI Scale zooms the entire interface; Now Numbers Scale only affects Heel, Trim, SOG, VMG.</div>
+          <div class="tiny" style="margin-top:6px;">Tip: Overall Page scale zooms the entire interface; Now Numbers Scale only affects Heel, Trim, SOG, VMG; Buttons Scale grows click targets and button text.</div>
         </div>
 
         <!-- Now Stats Visibility -->
@@ -338,15 +348,43 @@
         <!-- Logs -->
         <div class="card grow"><div style="font-weight:700;margin-bottom:8px;">Logs</div><pre class="log" id="log"></pre></div>
 
-        <!-- Recording Settings -->
+        <!-- Recording, Backend & Transfer (merged) -->
         <div class="card half">
-          <div style="font-weight:700;margin-bottom:8px;">Recording</div>
-          <label style="display:flex;align-items:center;gap:8px;">
-            <input type="checkbox" id="autoDownloadCsv"/>
-            Auto-download CSV on stop recording
-          </label>
-          <div class="tiny" style="margin-top:6px;">Enable to prompt automatic CSV download after ending a recording.</div>
+          <div style="font-weight:700;margin-bottom:8px;">Recording, Backend & Transfer</div>
+          <div class="grid" style="grid-template-columns:1fr;gap:12px;">
+            <div>
+              <div class="small" style="font-weight:700;margin-bottom:6px;">Recording</div>
+              <label style="display:flex;align-items:center;gap:8px;">
+                <input type="checkbox" id="autoDownloadCsv"/>
+                Auto-download CSV on stop recording
+              </label>
+              <div class="tiny" style="margin-top:6px;">Enable to prompt automatic CSV download after ending a recording.</div>
+            </div>
+            <div>
+              <div class="small" style="font-weight:700;margin-bottom:6px;">Backend Server</div>
+              <label>Base URL</label>
+              <input id="backendBaseUrl" type="text" placeholder="http://localhost:8000"/>
+              <div class="btns" style="margin-top:8px;">
+                <button id="saveBackendUrl">Save</button>
+              </div>
+              <div id="backendStatus" class="tiny"></div>
+            </div>
+            <div>
+              <div class="small" style="font-weight:700;margin-bottom:6px;">Import & Transfer</div>
+              <label style="display:flex;align-items:center;gap:8px;">
+                <input type="checkbox" id="skipDupImport"/>
+                Skip duplicates when importing (CSV/server)
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;">
+                <input type="checkbox" id="verifyTransfer"/>
+                Verify CSV integrity during transfer
+              </label>
+              <div class="tiny">Verification compares a SHA-256 hash from the server to the downloaded data, and checks uploads by comparing the server-returned hash to your local hash.</div>
+            </div>
+          </div>
         </div>
+
+        
       </div>
     </section>
   </div>
@@ -1049,6 +1087,60 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch {}
     autoCb.addEventListener('change', () => {
       try { localStorage.setItem('autoDownloadCsv', autoCb.checked ? 'true' : 'false'); } catch {}
+    });
+  }
+
+  // Import Options: Skip duplicates
+  const skipCb = document.getElementById('skipDupImport');
+  if (skipCb){
+    try{ const v = localStorage.getItem('skipDupImport'); skipCb.checked = (v===null)? true : (v==='true'); }catch{}
+    skipCb.addEventListener('change', ()=>{
+      try{ localStorage.setItem('skipDupImport', skipCb.checked ? 'true' : 'false'); }catch{}
+    });
+  }
+  // Transfer verification setting
+  const verCb = document.getElementById('verifyTransfer');
+  if (verCb){
+    try{ const v = localStorage.getItem('verifyTransfer'); verCb.checked = (v===null)? true : (v==='true'); }catch{}
+    verCb.addEventListener('change', ()=>{
+      try{ localStorage.setItem('verifyTransfer', verCb.checked ? 'true' : 'false'); }catch{}
+    });
+  }
+
+  // Buttons scale (range + number) inside Scaling
+  (function(){
+    const slider = document.getElementById('btnScale');
+    const num = document.getElementById('btnScaleVal');
+    if (!slider || !num) return;
+    const apply = (val)=>{ document.documentElement.style.setProperty('--btn-scale', String(val)); num.value = String(val); };
+    try{
+      const saved = parseFloat(localStorage.getItem('btnScale')||'1');
+      const v = isFinite(saved) ? saved : 1;
+      slider.value = String(v);
+      num.value = String(v);
+      apply(v);
+    }catch{ apply(1); }
+    slider.addEventListener('input', ()=>{ const v=parseFloat(slider.value||'1'); apply(v); });
+    slider.addEventListener('change', ()=>{ try{ localStorage.setItem('btnScale', String(parseFloat(slider.value||'1'))); }catch{} });
+    num.addEventListener('input', ()=>{ const v=parseFloat(num.value||'1'); if(isFinite(v)){ slider.value=String(v); apply(v); }});
+    num.addEventListener('change', ()=>{ try{ localStorage.setItem('btnScale', String(parseFloat(num.value||'1'))); }catch{} });
+  })();
+
+  // Backend server settings init
+  const bUrlInput = document.getElementById('backendBaseUrl');
+  const bSaveBtn = document.getElementById('saveBackendUrl');
+  const bStat = document.getElementById('backendStatus');
+  if (bUrlInput) {
+    const cur = localStorage.getItem('backend_base_url') || 'http://localhost:8000';
+    bUrlInput.value = cur;
+    if (bStat) bStat.textContent = `Using: ${cur}`;
+  }
+  if (bSaveBtn && bUrlInput) {
+    bSaveBtn.addEventListener('click', () => {
+      const v = (bUrlInput.value || '').trim();
+      if (!v) return;
+      try { localStorage.setItem('backend_base_url', v); } catch {}
+      if (bStat) bStat.textContent = `Saved. Using: ${v}`;
     });
   }
 });
