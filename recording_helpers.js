@@ -65,7 +65,8 @@ function stopRec(){
     shouldDownload = (v === null) ? true : (v === 'true');
   } catch {}
   if (shouldDownload) {
-  const header=['unit_id','athlete','timestamp_ms','iso_time','elapsed_s','seq','roll_deg','pitch_deg','lat','lon','gnss_ms','gnss_iso'];
+  // Include sog_mps and heading_deg (and gps_utc alias) in header to match reports export
+  const header=['unit_id','athlete','timestamp_ms','iso_time','elapsed_s','seq','roll_deg','pitch_deg','lat','lon','gnss_ms','gnss_iso','gps_utc','sog_mps','heading_deg'];
   const lines=[header.join(',')];
   let topMarkLine = 'top_mark', startPt1Line = 'start_pt1', startPt2Line = 'start_pt2';
   let windStartLine = 'wind_start', windEndLine = 'wind_end';
@@ -106,14 +107,29 @@ function stopRec(){
   lines.push(windStartLine);
   lines.push(windEndLine);
   for(const r of recRows){
-    const iso=new Date(r.t).toISOString();
+    const iso = new Date(r.t).toISOString();
     const u = units[r.unit];
-    const athlete = u ? u.customName || r.unit : r.unit;
-    lines.push([r.unit,athlete,r.t,`"${iso.replace(/"/g,'""')}"`,
-                (globalT0!==null?((r.t-globalT0)/1000).toFixed(3):''),
-                (r.seq??''),r.roll.toFixed(6),r.pitch.toFixed(6),
-                (Number.isFinite(r.lat)?r.lat.toFixed(6):''),(Number.isFinite(r.lon)?r.lon.toFixed(6):''),
-                (r.gnss_ms??''), r.gnss_iso?`"${r.gnss_iso}"`:''].join(','));
+    const athlete = u ? (u.customName || r.unit) : r.unit;
+    const gnssIsoEsc = (typeof r.gnss_iso === 'string' && r.gnss_iso.length)
+      ? `"${r.gnss_iso.replace(/"/g,'""')}"` : '';
+    lines.push([
+      r.unit,
+      athlete,
+      r.t,
+      `"${iso.replace(/"/g,'""')}"`,
+      (globalT0!==null?((r.t-globalT0)/1000).toFixed(3):''),
+      (r.seq??''),
+      (Number.isFinite(r.roll)?Number(r.roll).toFixed(6):''),
+      (Number.isFinite(r.pitch)?Number(r.pitch).toFixed(6):''),
+      (Number.isFinite(r.lat)?Number(r.lat).toFixed(6):''),
+      (Number.isFinite(r.lon)?Number(r.lon).toFixed(6):''),
+      (r.gnss_ms??''),
+      gnssIsoEsc,
+      // gps_utc duplicates gnss_iso for compatibility with analysers
+      gnssIsoEsc,
+      (typeof r.sog_mps === 'number' && Number.isFinite(r.sog_mps) ? r.sog_mps.toFixed(3) : ''),
+      (typeof r.heading_deg === 'number' && Number.isFinite(r.heading_deg) ? r.heading_deg.toFixed(1) : '')
+    ].join(','));
   }
   const csv=lines.join('\n'), blob=new Blob([csv],{type:'text/csv'}), d=new Date(recStartedAt||Date.now());
   const fname=`trollsports_multi_${d.getFullYear()}-${fmt2(d.getMonth()+1)}-${fmt2(d.getDate())}_${fmt2(d.getHours())}-${fmt2(d.getMinutes())}-${fmt2(d.getSeconds())}.csv`;

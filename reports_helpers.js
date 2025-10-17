@@ -34,8 +34,13 @@ function generateReportsTabs() {
       }
       try{ rec._hash = await computeSHA256Hex(text); }catch{}
       if (shouldSkipDuplicate(rec)) {
-  contentEl.innerHTML = '<div class="small">Skipped duplicate recording (Settings → Import & Transfer → Skip duplicates is ON).</div>';
-        return;
+        try{
+          const proceed = confirm('This CSV matches an existing report. Import anyway?');
+          if (!proceed) {
+            contentEl.innerHTML = '<div class="small">Skipped duplicate recording (Settings → Import & Transfer → Skip duplicates is ON).</div>';
+            return;
+          }
+        }catch{}
       }
       allRecordings.push(rec);
       if (typeof saveRecordingsToStorage === 'function') saveRecordingsToStorage();
@@ -115,20 +120,20 @@ function generateReportsTabs() {
       };
       actionsEl.appendChild(renBtn);
 
-      // CSV menu
-      const csvBtn = document.createElement('button');
-      csvBtn.textContent = 'CSV';
-      csvBtn.className = 'small';
-      csvBtn.onclick = () => openCsvActionsMenu();
-      actionsEl.appendChild(csvBtn);
+  // CSV menu moved into Backup menu
+
+      // Backup menu button
+      const serverBtn = document.createElement('button');
+      serverBtn.textContent = 'Backup';
+      serverBtn.className = 'small';
+      serverBtn.onclick = () => openServerActionsMenu();
+      actionsEl.appendChild(serverBtn);
 
       // Utility: get import duplicate-skip setting
       const isSkipDup = () => {
         try{ const v = localStorage.getItem('skipDupImport'); return v===null ? true : (v==='true'); }catch{ return true; }
       };
-      const isVerify = () => {
-        try{ const v = localStorage.getItem('verifyTransfer'); return v===null ? true : (v==='true'); }catch{ return true; }
-      };
+      // removed verifyTransfer UI; verification defaults to on when used
       // Utility: naive duplicate check without hash
       function approxDuplicate(rec){
         try{
@@ -146,16 +151,14 @@ function generateReportsTabs() {
         }catch{ return false; }
       }
       // Public helper used by import paths
+      // Only consider exact content hash to avoid false positives after deletions
       window.shouldSkipDuplicate = function(rec){
         if (!isSkipDup()) return false;
         try{
-          if (rec && rec._hash) {
-            // If any existing has same _hash, skip
-            const exists = allRecordings.some(r=> r && r._hash && r._hash===rec._hash);
-            if (exists) return true;
-          }
-        }catch{}
-        return approxDuplicate(rec);
+          const h = rec && rec._hash;
+          if (!h) return false; // no hash -> don't block import
+          return allRecordings.some(r => r && r._hash === h);
+        }catch{ return false; }
       }
       // Hash helper
       window.computeSHA256Hex = async function(str){
@@ -166,14 +169,7 @@ function generateReportsTabs() {
         return bytes.map(b=> b.toString(16).padStart(2,'0')).join('');
       }
 
-      // Backend integration: single Server button with menu
-  const serverBtn = document.createElement('button');
-  serverBtn.textContent = 'Backup';
-      serverBtn.className = 'small';
-      serverBtn.onclick = () => openServerActionsMenu();
-      actionsEl.appendChild(serverBtn);
-
-      // Removed individual server buttons in favor of the Server menu
+    // Server backup button removed; CSV menu remains
 
       const singleBtn = document.createElement('button');
       singleBtn.textContent = 'Select single athlete';
@@ -1012,119 +1008,372 @@ function showReportFor(recId) {
 window.generateReportsTabs = generateReportsTabs;
 window.showReportFor = showReportFor;
 
-// -------- Server Load Modal --------
-function formatDateKey(iso){ try{ const d=new Date(iso); if(!isNaN(d)) return d.toISOString().slice(0,10); }catch{} return 'Unknown'; }
-function formatTimeHM(iso){ try{ const d=new Date(iso); if(!isNaN(d)) { const h=String(d.getHours()).padStart(2,'0'); const m=String(d.getMinutes()).padStart(2,'0'); return `${h}:${m}`; } }catch{} return ''; }
-function humanSize(n){ if(!(n>0)) return ''; const kb = n/1024; if(kb<1024) return `${Math.round(kb)} KB`; const mb=kb/1024; return `${mb.toFixed(1)} MB`; }
-function closeServerLoadModal(){ const ov=document.getElementById('serverLoadModalOverlay'); if(ov&&ov.parentElement){ try{ ov.remove(); }catch{} } }
-async function openServerLoadModal(){
-  const base = (localStorage.getItem('backend_base_url') || 'http://localhost:8000').replace(/\/$/,'');
-  // Fetch list
-  let items=[]; try{ const resp=await fetch(base+'/api/recordings'); if(resp.ok){ const j=await resp.json(); items=(j.items||[]); } }catch(e){ alert('Failed to reach server.'); return; }
-  if(!items.length){ alert('No recordings on server.'); return; }
-  // Group by date
-  const byDate = {}; const byId = {};
-  items.forEach(it=>{ const k=formatDateKey(it.updated_at||it.created_at||new Date().toISOString()); if(!byDate[k]) byDate[k]=[]; byDate[k].push(it); byId[it.id]=it; });
-  const dates = Object.keys(byDate).sort().reverse();
-  // Build modal
-  if (document.getElementById('serverLoadModalOverlay')) { try{ document.getElementById('serverLoadModalOverlay').remove(); }catch{} }
-  const overlay = document.createElement('div'); overlay.id='serverLoadModalOverlay'; overlay.className='modal-overlay'; overlay.addEventListener('click', e=>{ if(e.target===overlay) closeServerLoadModal(); });
-  const dialog = document.createElement('div'); dialog.className='modal-dialog'; dialog.setAttribute('role','dialog'); dialog.setAttribute('aria-modal','true'); dialog.style.maxWidth='820px'; dialog.style.width='90%';
-  const header = document.createElement('div'); header.className='modal-header';
-  const title = document.createElement('div'); title.className='modal-title'; title.textContent='Load from server';
-  const closeBtn = document.createElement('button'); closeBtn.className='modal-close'; closeBtn.innerHTML='✕'; closeBtn.onclick=closeServerLoadModal;
-  header.appendChild(title); header.appendChild(closeBtn);
-  const body = document.createElement('div'); body.className='modal-content';
-  // Layout: left date buttons, right list for selected date
-  const wrap = document.createElement('div'); wrap.style.display='grid'; wrap.style.gridTemplateColumns='200px 1fr'; wrap.style.gap='12px';
-  const left = document.createElement('div'); left.style.display='flex'; left.style.flexDirection='column'; left.style.gap='8px';
-  const right = document.createElement('div'); right.style.display='flex'; right.style.flexDirection='column'; right.style.gap='8px'; right.style.maxHeight='50vh'; right.style.overflow='auto';
-  wrap.appendChild(left); wrap.appendChild(right); body.appendChild(wrap);
-  // Footer
-  const footer = document.createElement('div'); footer.className='modal-footer'; footer.style.display='flex'; footer.style.justifyContent='flex-end'; footer.style.gap='8px';
-  const cancelBtn = document.createElement('button'); cancelBtn.textContent='Cancel'; cancelBtn.onclick=closeServerLoadModal;
-  const loadBtn = document.createElement('button'); loadBtn.textContent='Load'; loadBtn.style.background='var(--accent)'; loadBtn.style.color='#fff';
-  footer.appendChild(cancelBtn); footer.appendChild(loadBtn);
+// Backup/MQTT server client logic for interacting with mqtt_backup_server.py
 
-  dialog.appendChild(header); dialog.appendChild(body); dialog.appendChild(footer); overlay.appendChild(dialog); document.body.appendChild(overlay);
+function getBackupBaseTopic(){
+  try{ const s = localStorage.getItem('mqtt_backup_base'); if (s && s.trim()) return s.trim(); }catch{}
+  return 'recording/backup';
+}
 
-  // State
-  let currentDate = dates[0];
-  const selected = new Set();
-  // Render dates
-  function renderDates(){
-    left.innerHTML='';
-    dates.forEach(dk=>{
-      const b=document.createElement('button'); b.className='modal-item'; b.textContent=dk; b.style.textAlign='left'; b.style.justifyContent='flex-start';
-      if(dk===currentDate){ b.style.background='var(--accent)'; b.style.color='#fff'; }
-      b.onclick=()=>{ currentDate=dk; renderDates(); renderDayList(); };
-      left.appendChild(b);
-    });
-  }
-  // Render recordings for currentDate
-  function renderDayList(){
-    right.innerHTML='';
-    const list = byDate[currentDate]||[];
-    // Day header with Select All
-    const head = document.createElement('div'); head.style.display='flex'; head.style.alignItems='center'; head.style.justifyContent='space-between';
-    const hleft = document.createElement('div'); hleft.innerHTML = `<b>${currentDate}</b> — ${list.length} file(s)`;
-    const hright = document.createElement('label'); hright.style.display='flex'; hright.style.alignItems='center'; hright.style.gap='6px';
-    const selAll = document.createElement('input'); selAll.type='checkbox';
-    // Initialize select-all checkbox based on whether all items of day are selected
-    selAll.checked = list.every(it=> selected.has(it.id));
-    selAll.onchange = ()=>{
-      if(selAll.checked){ list.forEach(it=> selected.add(it.id)); } else { list.forEach(it=> selected.delete(it.id)); }
-      renderDayList();
-    };
-    const sal = document.createElement('span'); sal.textContent='Load all';
-    hright.appendChild(selAll); hright.appendChild(sal); head.appendChild(hleft); head.appendChild(hright); right.appendChild(head);
-    // Items
-    const ul=document.createElement('div'); ul.style.display='flex'; ul.style.flexDirection='column'; ul.style.gap='6px'; ul.style.marginTop='8px';
-    list.forEach(it=>{
-      const row=document.createElement('label'); row.style.display='grid'; row.style.gridTemplateColumns='24px 1fr auto'; row.style.alignItems='center'; row.style.gap='8px'; row.style.padding='6px 4px'; row.style.border='1px solid #eee'; row.style.borderRadius='6px';
-      const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=selected.has(it.id); cb.onchange=()=>{ if(cb.checked) selected.add(it.id); else selected.delete(it.id); };
-      const name=document.createElement('div'); name.className='small';
-      const label = it.label && it.label.trim() ? it.label : (it.filename || it.id);
-      name.textContent = `${formatTimeHM(it.updated_at || it.created_at)}  •  ${label}`;
-      const meta=document.createElement('div'); meta.className='tiny'; meta.textContent=humanSize(it.size_bytes||0);
-      row.appendChild(cb); row.appendChild(name); row.appendChild(meta);
-      ul.appendChild(row);
-    });
-    right.appendChild(ul);
-  }
-  renderDates(); renderDayList();
+async function ensureViewerConnected(timeoutMs=8000){
+  // If already connected, done
+  try{ if (window.client && window.client.connected) return; }catch{}
+  // Must be unlocked to have creds
+  if (!window.unlocked) { throw new Error('locked'); }
+  try{ if (typeof window.connect === 'function') window.connect(); }catch{}
+  // Poll for connection up to timeout
+  const start = Date.now();
+  await new Promise((resolve, reject)=>{
+    function check(){
+      try{ if (window.client && window.client.connected) { resolve(); return; } }catch{}
+      if (Date.now() - start > timeoutMs) { reject(new Error('connect timeout')); return; }
+      setTimeout(check, 250);
+    }
+    check();
+  });
+}
 
-  // Load selected on click
-  loadBtn.onclick = async ()=>{
-    if (selected.size===0){ alert('No recordings selected.'); return; }
-    loadBtn.disabled=true; cancelBtn.disabled=true; loadBtn.textContent='Loading…';
-    const ids=Array.from(selected);
-    let imported=0, skipped=0, failed=0; let lastRecId=null;
-    const verifyOn = (function(){ try{ const v=localStorage.getItem('verifyTransfer'); return v===null? true : (v==='true'); }catch{ return true; } })();
-    for (const id of ids){
+async function getConnectedMqttClient(){
+  // Prefer separate publisher if connected, else main viewer client
+  try{ if (window.pubClient && window.pubClient.connected) return window.pubClient; }catch{}
+  try{ if (window.client && window.client.connected) return window.client; }catch{}
+  // Attempt to auto-connect the viewer client (uses decrypted creds after unlock)
+  try{ await ensureViewerConnected(); }catch{}
+  try{ if (window.client && window.client.connected) return window.client; }catch{}
+  // If still not connected (likely locked), spin up a dedicated backup client using pubUser/pubPass
+  try {
+    if (!window._backupClient || !window._backupClient.connected) {
+      const host = document.getElementById('host')?.value?.trim();
+      const port = document.getElementById('port')?.value?.trim() || '8884';
+      const path = document.getElementById('path')?.value?.trim() || '/mqtt';
+      const user = document.getElementById('pubUser')?.value || (window.viewer && window.viewer.user) || '';
+      const pass = document.getElementById('pubPass')?.value || (window.viewer && window.viewer.pass) || '';
+      if (!host || !user || !pass) throw new Error('missing creds');
+      const url = `wss://${host}:${port}${path}`;
+      const cid = 'backup-'+Math.random().toString(16).slice(2,10);
+      // Use global mqtt client from mqtt.js loaded in index.html
+      if (typeof mqtt === 'undefined') throw new Error('mqtt lib missing');
+      window._backupClient = mqtt.connect(url, { protocolVersion: 4, clean: true, clientId: cid, username: user, password: pass, keepalive: 20, reconnectPeriod: 0 });
+      await new Promise((resolve, reject)=>{
+        const to = setTimeout(()=>{ cleanup(); reject(new Error('backup client connect timeout')); }, 8000);
+        function cleanup(){ clearTimeout(to); try{ window._backupClient?.off?.('connect', onC); }catch{} try{ window._backupClient?.off?.('error', onE); }catch{} }
+        function onC(){ cleanup(); resolve(); }
+        function onE(e){ cleanup(); reject(e||new Error('backup client error')); }
+        window._backupClient.once('connect', onC);
+        window._backupClient.once('error', onE);
+      });
+      window._backupClient.on('close', ()=>{ try{ window._backupClient = null; }catch{} });
+    }
+    if (window._backupClient && window._backupClient.connected) return window._backupClient;
+  } catch(_) { /* fallthrough to throw below */ }
+  throw new Error('No connected MQTT client');
+}
+
+function _randId(n=8){ return Math.random().toString(16).slice(2, 2+n); }
+function _clientId(cli){ try{ return (cli && cli.options && cli.options.clientId) || 'web'; }catch{ return 'web'; } }
+function _b64FromBytes(bytes){ let bin=''; for(let i=0;i<bytes.length;i++){ bin += String.fromCharCode(bytes[i]); } return btoa(bin); }
+function _bytesFromB64(b64){ const bin = atob(b64); const out = new Uint8Array(bin.length); for(let i=0;i<bin.length;i++){ out[i] = bin.charCodeAt(i); } return out; }
+function _concatBytes(chunks){ const total = chunks.reduce((s,a)=> s + a.length, 0); const out = new Uint8Array(total); let ofs=0; for(const a of chunks){ out.set(a, ofs); ofs += a.length; } return out; }
+
+async function mqttOnceList(){
+  const base = getBackupBaseTopic();
+  const cli = await getConnectedMqttClient();
+  const corr = _randId(12);
+  const reply = `${base}/reply/${_clientId(cli)}/${_randId(6)}`;
+  const subTopic = `${reply}/list`;
+  await new Promise((resolve, reject)=> cli.subscribe(subTopic, { qos:1 }, (err)=> err?reject(err):resolve()));
+  return await new Promise((resolve, reject)=>{
+    const to = setTimeout(()=>{ cleanup(); reject(new Error('list timeout')); }, 8000);
+    function cleanup(){ clearTimeout(to); try{ cli.removeListener('message', onMsg); }catch{} try{ cli.unsubscribe(subTopic, ()=>{}); }catch{} }
+    function onMsg(topic, message){
+      if (topic !== subTopic) return;
       try{
-        const it = byId[id];
-        const respCsv = await fetch(base + '/api/recordings/'+encodeURIComponent(id)+'/csv');
-        if(!respCsv.ok) throw new Error('download failed');
-        const text = await respCsv.text();
-        if (verifyOn){
-          const hdrSha = respCsv.headers.get('X-Content-SHA256') || respCsv.headers.get('ETag') || (it?.sha256 || '');
-          if (hdrSha){ try{ const calc=await computeSHA256Hex(text); if(calc && hdrSha && calc.toLowerCase()!==hdrSha.toLowerCase()){ failed++; continue; } }catch{}
-          }
+        const j = JSON.parse(message.toString());
+        if (j && (!j.corr || j.corr === corr)) { cleanup(); resolve(j); }
+      }catch(e){ /* ignore parse */ }
+    }
+    cli.on('message', onMsg);
+    cli.publish(`${base}/req/list`, JSON.stringify({ reply, corr }), { qos:0, retain:false });
+  });
+}
+
+async function mqttDownloadCsv(fileId, onProgress){
+  const base = getBackupBaseTopic();
+  const cli = await getConnectedMqttClient();
+  const corr = _randId(12);
+  const reply = `${base}/reply/${_clientId(cli)}/${_randId(6)}`;
+  const subTopic = `${reply}/get/${fileId}`;
+  await new Promise((resolve, reject)=> cli.subscribe(subTopic, { qos:0 }, (err)=> err?reject(err):resolve()));
+  return await new Promise((resolve, reject)=>{
+    const chunks = [];
+    let srvSha = null;
+    const to = setTimeout(()=>{ cleanup(); reject(new Error('get timeout')); }, 15000);
+    function cleanup(){ clearTimeout(to); try{ cli.removeListener('message', onMsg); }catch{} try{ cli.unsubscribe(subTopic, ()=>{}); }catch{} }
+    let totalSize = null; let received = 0;
+    function onMsg(topic, message){
+      if (topic !== subTopic) return;
+      let j = null; try{ j = JSON.parse(message.toString()); }catch{}
+      if (!j || (j.corr && j.corr !== corr)) return;
+      if (j.type === 'start') { srvSha = j.sha256 || null; totalSize = (typeof j.size==='number' ? j.size : null); if(typeof onProgress==='function'){ try{ onProgress({ phase:'start', totalBytes: totalSize }); }catch{} } return; }
+      if (j.type === 'chunk') {
+        try{ const b = _bytesFromB64(j.data || ''); chunks.push(b); received += b.length; if(typeof onProgress==='function'){ try{ const pct = (totalSize? Math.round(received*100/totalSize) : null); onProgress({ phase:'chunk', receivedBytes: received, totalBytes: totalSize, percent: pct }); }catch{} } }catch{}
+        return;
+      }
+      if (j.type === 'end') {
+        cleanup();
+        const bytes = _concatBytes(chunks);
+        try{
+          const txt = new TextDecoder().decode(bytes);
+          resolve({ text: txt, sha256: srvSha });
+        }catch(e){
+          // Fallback: attempt best-effort string
+          try{ let bin=''; for(const c of chunks){ bin += String.fromCharCode(...c); } resolve({ text: bin, sha256: srvSha }); }catch{ reject(new Error('decode failed')); }
         }
-        const rec = parseCsvTextToRecording(text, it.filename||('server-'+it.id+'.csv'));
-        try{ rec._hash = await computeSHA256Hex(text); }catch{}
-        if (window.shouldSkipDuplicate && window.shouldSkipDuplicate(rec)){ skipped++; continue; }
-        if(!rec){ failed++; continue; }
-        rec.label = it.label || rec.label || it.filename || it.id;
-        allRecordings.push(rec); imported++; lastRecId = rec.id;
+      }
+      if (j.type === 'error') { cleanup(); reject(new Error(j.error || 'get error')); }
+    }
+    cli.on('message', onMsg);
+    cli.publish(`${base}/req/get`, JSON.stringify({ reply, corr, id: fileId }), { qos:0, retain:false });
+  });
+}
+
+async function mqttUploadCsv(filename, csvText, label, onProgress){
+  const base = getBackupBaseTopic();
+  const cli = await getConnectedMqttClient();
+  const corr = _randId(12);
+  const reply = `${base}/reply/${_clientId(cli)}/${_randId(6)}`;
+  const subTopic = `${reply}/put`;
+  const sid = `s_${Date.now()}_${_randId(6)}`;
+  // Subscribe at QoS 1 so server replies (published at QoS 1) are delivered reliably
+  await new Promise((resolve, reject)=> cli.subscribe(subTopic, { qos:1 }, (err)=> err?reject(err):resolve()));
+  const enc = new TextEncoder();
+  const bytes = enc.encode(csvText);
+  // Default to 8KB chunks; configurable via localStorage('backup_chunk_kb')
+  let CHUNK = 8*1024; try{ const kb=parseInt(localStorage.getItem('backup_chunk_kb')||'8',10); if(isFinite(kb)&&kb>0) CHUNK=kb*1024; }catch{}
+  const publish = (topic, payload) => cli.publish(topic, JSON.stringify(payload), { qos:1, retain:false });
+  // wait for a specific message type for this sid
+  function waitFor(type){
+    return new Promise((resolve, reject)=>{
+      const to = setTimeout(()=>{ cleanup(); reject(new Error(`put ${type} timeout`)); }, 15000);
+      function cleanup(){ clearTimeout(to); try{ cli.removeListener('message', onMsg); }catch{} }
+      function onMsg(topic, message){
+        if (topic !== subTopic) return;
+        let j = null; try{ j = JSON.parse(message.toString()); }catch{}
+        if (!j || j.sid !== sid || (j.corr && j.corr !== corr)) return;
+        if (j.type === 'error') { cleanup(); reject(new Error(j.error || 'put error')); return; }
+        if (j.type === type) { cleanup(); resolve(j); }
+      }
+      cli.on('message', onMsg);
+    });
+  }
+  // start
+  if (typeof onProgress === 'function') { try{ onProgress({ phase:'start', totalBytes: bytes.length }); }catch{} }
+  publish(`${base}/req/put`, { reply, corr, type: 'start', sid, filename, label });
+  await waitFor('start');
+  // chunks
+  for (let ofs=0; ofs < bytes.length; ofs += CHUNK){
+    const slice = bytes.subarray(ofs, Math.min(ofs+CHUNK, bytes.length));
+    const b64 = _b64FromBytes(slice);
+    // publish with simple retry on timeout
+    let sent = false; let lastErr = null;
+    for (let attempt=1; attempt<=2 && !sent; attempt++){
+      try{
+        publish(`${base}/req/put`, { reply, corr, type: 'chunk', sid, data: b64 });
+        await waitFor('ack');
+        sent = true;
+      }catch(e){ lastErr = e; if (attempt>=2) break; }
+    }
+    if (!sent) throw lastErr || new Error('chunk ack failed');
+    if (typeof onProgress === 'function') { try{ const done = Math.min(ofs+CHUNK, bytes.length); onProgress({ phase:'chunk', sentBytes: done, totalBytes: bytes.length, percent: Math.round(done*100/bytes.length) }); }catch{} }
+  }
+  // end
+  publish(`${base}/req/put`, { reply, corr, type: 'end', sid });
+  const end = await waitFor('end');
+  try{ cli.unsubscribe(subTopic, ()=>{}); }catch{}
+  if (typeof onProgress === 'function') { try{ onProgress({ phase:'end' }); }catch{} }
+  return end;
+}
+
+async function mqttOnceDelete(fileId){
+  const base = getBackupBaseTopic();
+  const cli = await getConnectedMqttClient();
+  const corr = _randId(12);
+  const reply = `${base}/reply/${_clientId(cli)}/${_randId(6)}`;
+  const subTopic = `${reply}/delete`;
+  await new Promise((resolve, reject)=> cli.subscribe(subTopic, { qos:0 }, (err)=> err?reject(err):resolve()));
+  return await new Promise((resolve, reject)=>{
+    const to = setTimeout(()=>{ cleanup(); reject(new Error('delete timeout')); }, 8000);
+    function cleanup(){ clearTimeout(to); try{ cli.removeListener('message', onMsg); }catch{} try{ cli.unsubscribe(subTopic, ()=>{}); }catch{} }
+    function onMsg(topic, message){
+      if (topic !== subTopic) return;
+      let j = null; try{ j = JSON.parse(message.toString()); }catch{}
+      if (!j || (j.corr && j.corr !== corr)) return;
+      cleanup();
+      resolve(j);
+    }
+    cli.on('message', onMsg);
+    cli.publish(`${base}/req/delete`, JSON.stringify({ reply, corr, id: fileId }), { qos:0, retain:false });
+  });
+}
+
+async function mqttOnceUpdate(fileId, label){
+  const base = getBackupBaseTopic();
+  const cli = await getConnectedMqttClient();
+  const corr = _randId(12);
+  const reply = `${base}/reply/${_clientId(cli)}/${_randId(6)}`;
+  const subTopic = `${reply}/update`;
+  await new Promise((resolve, reject)=> cli.subscribe(subTopic, { qos:0 }, (err)=> err?reject(err):resolve()));
+  return await new Promise((resolve, reject)=>{
+    const to = setTimeout(()=>{ cleanup(); reject(new Error('update timeout')); }, 8000);
+    function cleanup(){ clearTimeout(to); try{ cli.removeListener('message', onMsg); }catch{} try{ cli.unsubscribe(subTopic, ()=>{}); }catch{} }
+    function onMsg(topic, message){
+      if (topic !== subTopic) return;
+      let j = null; try{ j = JSON.parse(message.toString()); }catch{}
+      if (!j || (j.corr && j.corr !== corr)) return;
+      cleanup();
+      resolve(j);
+    }
+    cli.on('message', onMsg);
+    cli.publish(`${base}/req/update`, JSON.stringify({ reply, corr, id: fileId, label }), { qos:0, retain:false });
+  });
+}
+
+async function backupAllToServer(){
+  try{
+    // create status banner
+    const statusId = 'backupStatusBanner';
+    let banner = document.getElementById(statusId);
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = statusId;
+      banner.style.position = 'fixed';
+      banner.style.right = '12px';
+      banner.style.bottom = '12px';
+      banner.style.zIndex = '9999';
+      banner.style.background = 'rgba(0,0,0,0.8)';
+      banner.style.color = '#fff';
+      banner.style.padding = '10px 12px';
+      banner.style.borderRadius = '8px';
+      banner.style.fontSize = '12px';
+      banner.style.boxShadow = '0 2px 10px rgba(0,0,0,0.3)';
+      banner.textContent = 'Preparing backup…';
+      document.body.appendChild(banner);
+    }
+    const setText = (t)=>{ try{ banner.textContent = t; }catch{} };
+    // Build server index by filename -> meta
+    let serverIdx = {};
+    try{ const j = await mqttOnceList(); (j.items||[]).forEach(it=>{ const fn = it.filename||it.id||''; serverIdx[fn] = { size: it.size_bytes||0, sha256: it.sha256||'' }; }); }catch{}
+    let uploaded=0, skipped=0, failed=0;
+    const recs = (Array.isArray(allRecordings)? allRecordings : []);
+    for (let i=0; i<recs.length; i++){
+      const rec = recs[i];
+      try{
+        const csv = buildCsvForRecording(rec);
+        const fname = makeCsvFilename(rec);
+        const size = new Blob([csv]).size;
+        const srv = serverIdx[fname];
+        if (srv){
+          if (srv.sha256){
+            try{ const calc = await computeSHA256Hex(csv); if (calc && srv.sha256 && calc.toLowerCase()===srv.sha256.toLowerCase()){ skipped++; continue; } }catch{}
+          } else if (srv.size === size){ skipped++; continue; }
+        }
+        let lastPct = 0;
+        const end = await mqttUploadCsv(fname, csv, (rec.label||'').trim()||null, (p)=>{
+          if (!p) return;
+          if (p.phase === 'start') setText(`Uploading ${i+1}/${recs.length}: ${fname}…`);
+          if (p.phase === 'chunk'){
+            lastPct = p.percent||Math.round((p.sentBytes||0)*100/(p.totalBytes||1));
+            setText(`Uploading ${i+1}/${recs.length}: ${fname} — ${lastPct}%`);
+          }
+          if (p.phase === 'end') setText(`Uploaded ${i+1}/${recs.length}: ${fname}`);
+        });
+        // simple verify if server returned sha
+        try{ if (end && end.sha256){ const calc = await computeSHA256Hex(csv); if (calc && end.sha256 && calc.toLowerCase()!==end.sha256.toLowerCase()){ alert('Upload verification failed for '+fname+': server hash differs from local.'); } } }catch{}
+        uploaded++;
       }catch{ failed++; }
     }
-    try{ saveRecordingsToStorage(); }catch{}
-    try{ generateReportsTabs(); if(lastRecId) setTimeout(()=>{ try{ showReportFor(lastRecId); }catch{} }, 0); }catch{}
-    closeServerLoadModal();
-  if (failed>0 || skipped>0){ alert(`Loaded: ${imported}\nskipped: ${skipped}\nfailed: ${failed}`); }
-  };
+    setText(`Backup complete. Uploaded: ${uploaded}, skipped: ${skipped}, failed: ${failed}`);
+    // fade out banner after a moment
+    setTimeout(()=>{ try{ banner.style.transition='opacity 0.6s'; banner.style.opacity='0'; setTimeout(()=>{ try{ banner.remove(); }catch{} }, 700); }catch{} }, 1800);
+    alert(`Backup complete.\nUploaded: ${uploaded}\nskipped: ${skipped}\nfailed: ${failed}`);
+  }catch(e){ alert('Backup-all failed: '+(e?.message||e)); }
+}
+
+async function openServerLoadModal(){
+  let items=[]; try{ const j=await mqttOnceList(); items=(j.items||[]); }catch(e){ alert('Failed to reach backup server via MQTT.'); return; }
+  if(!items.length){ alert('No recordings on server.'); return; }
+  const overlay = document.createElement('div'); overlay.id='serverLoadOverlay'; overlay.className='modal-overlay'; overlay.addEventListener('click', e=>{ if(e.target===overlay) close(); });
+  const dialog = document.createElement('div'); dialog.className='modal-dialog'; dialog.style.maxWidth='820px'; dialog.style.width='90%';
+  const header = document.createElement('div'); header.className='modal-header';
+  const title = document.createElement('div'); title.className='modal-title'; title.textContent='Load from server';
+  const closeBtn = document.createElement('button'); closeBtn.className='modal-close'; closeBtn.innerHTML='✕'; closeBtn.onclick=close;
+  header.appendChild(title); header.appendChild(closeBtn);
+  const body = document.createElement('div'); body.className='modal-content';
+  const table = document.createElement('div'); table.style.display='grid'; table.style.gridTemplateColumns='1fr auto'; table.style.gap='8px';
+  // Header row
+  table.appendChild(makeCell('File', true)); table.appendChild(makeCell('Action', true));
+  // Rows
+  items.forEach(it=>{
+    const label = (it.label && it.label.trim()) ? it.label : (it.filename || it.id);
+    table.appendChild(makeCell(label));
+    const dl = document.createElement('button'); dl.className='small'; dl.textContent='Load'; dl.onclick=async()=>{
+      try{
+        // create a small banner for download progress
+        const statusId = 'downloadStatusBanner';
+        let banner = document.getElementById(statusId);
+        if (!banner) {
+          banner = document.createElement('div');
+          banner.id = statusId;
+          banner.style.position = 'fixed';
+          banner.style.right = '12px';
+          banner.style.bottom = '12px';
+          banner.style.zIndex = '9999';
+          banner.style.background = 'rgba(0,0,0,0.8)';
+          banner.style.color = '#fff';
+          banner.style.padding = '10px 12px';
+          banner.style.borderRadius = '8px';
+          banner.style.fontSize = '12px';
+          banner.style.boxShadow = '0 2px 10px rgba(0,0,0,0.3)';
+          banner.textContent = `Loading ${label}…`;
+          document.body.appendChild(banner);
+        }
+        const setText = (t)=>{ try{ banner.textContent = t; }catch{} };
+        const hideBanner = ()=>{ try{ banner.style.transition='opacity 0.6s'; banner.style.opacity='0'; setTimeout(()=>{ try{ banner.remove(); }catch{} }, 700); }catch{} };
+        const { text, sha256 } = await mqttDownloadCsv(it.id || it.filename, (p)=>{
+          if (!p) return;
+          if (p.phase==='start') setText(`Loading ${label}…`);
+          if (p.phase==='chunk') { const pct = (p.percent==null? '' : ` — ${p.percent}%`); setText(`Loading ${label}${pct}`); }
+        });
+        const rec = parseCsvTextToRecording(text, it.filename||'server.csv');
+        if (!rec || !rec.rows || rec.rows.length===0){ hideBanner(); alert('Downloaded CSV was empty or invalid.'); return; }
+        try{ rec._hash = await computeSHA256Hex(text); }catch{}
+        if (shouldSkipDuplicate(rec)) {
+          try{
+            const proceed = confirm('This CSV matches an existing report. Import anyway?');
+            if (!proceed) { hideBanner(); close(); alert('Skipped duplicate recording (Settings → Import & Transfer → Skip duplicates is ON).'); return; }
+          }catch{}
+        }
+        // Prompt for custom name after load
+        try{
+          // Default to the exact label shown in the selection menu
+          const suggested = label;
+          const newName = prompt('Name this report (optional):', suggested);
+          if (newName!=null && String(newName).trim()) rec.label = String(newName).trim();
+        }catch{}
+        allRecordings.push(rec);
+        if (typeof saveRecordingsToStorage === 'function') saveRecordingsToStorage();
+        generateReportsTabs();
+        setTimeout(()=>{ try{ showReportFor(rec.id); }catch{} }, 0);
+        close();
+        hideBanner();
+      }catch(err){ try{ const b=document.getElementById('downloadStatusBanner'); if(b){ b.remove(); } }catch{} alert('Load failed: '+(err?.message||err)); }
+    };
+    table.appendChild(dl);
+  });
+  body.appendChild(table);
+  dialog.appendChild(header); dialog.appendChild(body); overlay.appendChild(dialog); document.body.appendChild(overlay);
+  function close(){ const ov=document.getElementById('serverLoadOverlay'); if(ov&&ov.parentElement){ try{ ov.remove(); }catch{} } }
+  function makeCell(text, header=false){ const d=document.createElement('div'); d.textContent=text; d.className= header? 'small' : ''; return d; }
 }
 
 // -------- CSV Actions Menu --------
@@ -1175,41 +1424,6 @@ function downloadAllCsvs(){
   next();
 }
 
-// -------- Backup All helper --------
-async function backupAllToServer(){
-  try{
-    const base = (localStorage.getItem('backend_base_url') || 'http://localhost:8000').replace(/\/$/,'');
-    const verifyOn = (function(){ try{ const v=localStorage.getItem('verifyTransfer'); return v===null? true : (v==='true'); }catch{ return true; } })();
-    // Server index by filename
-    let serverIdx = {};
-    try{
-      const respIdx = await fetch(base + '/api/recordings');
-      if (respIdx.ok){ const j = await respIdx.json(); (j.items||[]).forEach(it=>{ serverIdx[it.filename||''] = { size: it.size_bytes||0, sha256: it.sha256||'' }; }); }
-    }catch{}
-    let uploaded=0, skipped=0, failed=0;
-    for (const rec of allRecordings){
-      try{
-        const csv = buildCsvForRecording(rec);
-        const fname = makeCsvFilename(rec);
-        const size = new Blob([csv]).size;
-        if (verifyOn && serverIdx[fname] && serverIdx[fname].sha256){
-          try{ const calc=await computeSHA256Hex(csv); if(calc && calc.toLowerCase()===serverIdx[fname].sha256.toLowerCase()){ skipped++; continue; } }catch{}
-        } else if (serverIdx[fname] && serverIdx[fname].size === size){ skipped++; continue; }
-        const fd = new FormData();
-        fd.append('file', new File([csv], fname, {type:'text/csv'}));
-        if (rec.label && rec.label.trim()) fd.append('label', rec.label.trim());
-        const resp = await fetch(base + '/api/recordings', { method:'POST', body: fd });
-        if (!resp.ok) { failed++; continue; }
-        if (verifyOn){
-          try{ const calc=await computeSHA256Hex(csv); const j=await resp.json(); const srvHash=(j&&j.meta&&j.meta.sha256)?j.meta.sha256:''; if(srvHash && calc && srvHash.toLowerCase()!==calc.toLowerCase()){ alert('Upload verification failed for '+fname+': server hash differs from local.'); } }catch{}
-        }
-        uploaded++;
-      }catch{ failed++; }
-    }
-    alert(`Backup complete.\nUploaded: ${uploaded}\nskipped: ${skipped}\nfailed: ${failed}`);
-  }catch(e){ alert('Backup-all failed: '+(e?.message||e)); }
-}
-
 // -------- Server Actions Menu --------
 function openServerActionsMenu(){
   if (document.getElementById('serverActionsOverlay')) { try{ document.getElementById('serverActionsOverlay').remove(); }catch{} }
@@ -1222,51 +1436,168 @@ function openServerActionsMenu(){
   const content = document.createElement('div'); content.className='modal-content';
   const list = document.createElement('div'); list.className='modal-list';
   const b1 = document.createElement('button'); b1.className='modal-item'; b1.textContent='Back up local files to server'; b1.onclick=async()=>{ close(); await backupAllToServer(); };
-  const b2 = document.createElement('button'); b2.className='modal-item'; b2.textContent='Load from server'; b2.onclick=()=>{ close(); openServerLoadModal(); };
-  const b3 = document.createElement('button'); b3.className='modal-item'; b3.textContent='Manage server files'; b3.onclick=()=>{ close(); openServerManageModal(); };
-  list.appendChild(b1); list.appendChild(b2); list.appendChild(b3); content.appendChild(list);
+  const b2 = document.createElement('button'); b2.className='modal-item'; b2.textContent='Server files (load & manage)'; b2.onclick=()=>{ close(); openServerManageModal(); };
+  list.appendChild(b1); list.appendChild(b2);
+
+  // CSV section below server buttons
+  const sep = document.createElement('div'); sep.className='small'; sep.style.margin='8px 0 4px'; sep.style.opacity='0.8'; sep.textContent='Local CSV';
+  const csv1 = document.createElement('button'); csv1.className='modal-item'; csv1.textContent='Import CSV'; csv1.onclick=()=>{ close(); const fi=window._importCsvFileInput; if(fi) fi.click(); else alert('Import not available'); };
+  const csv2 = document.createElement('button'); csv2.className='modal-item'; csv2.textContent='Download CSV (selected)'; csv2.onclick=()=>{ close(); downloadSelectedCsv(); };
+  const csv3 = document.createElement('button'); csv3.className='modal-item'; csv3.textContent='Download CSV (all)'; csv3.onclick=()=>{ close(); downloadAllCsvs(); };
+  content.appendChild(list);
+  content.appendChild(sep);
+  const csvList = document.createElement('div'); csvList.className='modal-list';
+  csvList.appendChild(csv1); csvList.appendChild(csv2); csvList.appendChild(csv3);
+  content.appendChild(csvList);
   dialog.appendChild(header); dialog.appendChild(content); overlay.appendChild(dialog); document.body.appendChild(overlay);
   function close(){ const ov=document.getElementById('serverActionsOverlay'); if(ov&&ov.parentElement){ try{ ov.remove(); }catch{} } }
 }
 
 // -------- Server Manage Modal --------
 async function openServerManageModal(){
-  const base = (localStorage.getItem('backend_base_url') || 'http://localhost:8000').replace(/\/$/,'');
-  let items=[]; try{ const resp=await fetch(base+'/api/recordings'); if(resp.ok){ const j=await resp.json(); items=(j.items||[]); } }catch(e){ alert('Failed to reach server.'); return; }
+  let items=[]; try{ const j=await mqttOnceList(); items=(j.items||[]); }catch(e){ alert('Failed to reach backup server via MQTT.'); return; }
   if(!items.length){ alert('No recordings on server.'); return; }
+  // Derive dates from filenames or updated_at
+  function itemDateStr(it){
+    // Try to pick up YYYY-MM-DD from filename, else from updated_at
+    try{
+      const fn = (it.filename||it.id||'');
+      const m = fn.match(/(20\d{2}-\d{2}-\d{2})/);
+      if (m) return m[1];
+      if (it.updated_at) return (it.updated_at||'').slice(0,10);
+    }catch{}
+    return 'Unknown';
+  }
+  const byDate = {};
+  items.forEach(it=>{ const d=itemDateStr(it); if(!byDate[d]) byDate[d]=[]; byDate[d].push(it); });
+  const dates = Object.keys(byDate).sort();
+
   const overlay = document.createElement('div'); overlay.id='serverManageOverlay'; overlay.className='modal-overlay'; overlay.addEventListener('click', e=>{ if(e.target===overlay) close(); });
-  const dialog = document.createElement('div'); dialog.className='modal-dialog'; dialog.style.maxWidth='820px'; dialog.style.width='90%';
+  const dialog = document.createElement('div'); dialog.className='modal-dialog'; dialog.style.maxWidth='900px'; dialog.style.width='90%';
   const header = document.createElement('div'); header.className='modal-header';
-  const title = document.createElement('div'); title.className='modal-title'; title.textContent='Manage server files';
+  const title = document.createElement('div'); title.className='modal-title'; title.textContent= 'Server files';
   const closeBtn = document.createElement('button'); closeBtn.className='modal-close'; closeBtn.innerHTML='✕'; closeBtn.onclick=close;
   header.appendChild(title); header.appendChild(closeBtn);
   const body = document.createElement('div'); body.className='modal-content';
-  const table = document.createElement('div'); table.style.display='grid'; table.style.gridTemplateColumns='1fr auto auto'; table.style.gap='8px';
-  // Header row
-  table.appendChild(makeCell('File', true)); table.appendChild(makeCell('Rename', true)); table.appendChild(makeCell('Delete', true));
-  // Rows
-  items.forEach(it=>{
-    const label = it.label && it.label.trim()? it.label : (it.filename || it.id);
-    table.appendChild(makeCell(label));
-    const rn = document.createElement('button'); rn.className='small'; rn.textContent='Rename'; rn.onclick=async()=>{ await renameItem(it.id, label); await refresh(); };
-    const del = document.createElement('button'); del.className='small'; del.textContent='Delete'; del.onclick=async()=>{ if(confirm('Delete this file from server?')){ await deleteItem(it.id); await refresh(); } };
-    table.appendChild(rn); table.appendChild(del);
-  });
+
+  // Date selector
+  const controls = document.createElement('div'); controls.style.display='flex'; controls.style.gap='8px'; controls.style.alignItems='center'; controls.style.marginBottom='10px';
+  const lab = document.createElement('label'); lab.className='small'; lab.textContent='Select date:'; controls.appendChild(lab);
+  const sel = document.createElement('select'); dates.forEach(d=>{ const o=document.createElement('option'); o.value=d; o.textContent=d; sel.appendChild(o); }); controls.appendChild(sel);
+  body.appendChild(controls);
+
+  // Container for table
+  const table = document.createElement('div'); table.style.display='grid'; table.style.gridTemplateColumns= 'auto 1fr auto auto auto'; table.style.gap='8px';
   body.appendChild(table);
+
+  // Footer actions (load selected)
+  const footer = document.createElement('div'); footer.style.display='flex'; footer.style.justifyContent='flex-end'; footer.style.gap='8px'; footer.style.marginTop='12px';
+  const loadBtn = document.createElement('button'); loadBtn.className='small'; loadBtn.textContent='Load selected'; loadBtn.onclick=async()=>{
+    const checks = table.querySelectorAll('input[type="checkbox"][data-id]:checked');
+    if (!checks.length){ alert('Select one or more files to load.'); return; }
+    // Load sequentially with progress banner
+    const statusId = 'downloadStatusBanner';
+    let banner = document.getElementById(statusId);
+    if (!banner) { banner = document.createElement('div'); banner.id=statusId; Object.assign(banner.style,{position:'fixed',right:'12px',bottom:'12px',zIndex:'9999',background:'rgba(0,0,0,0.8)',color:'#fff',padding:'10px 12px',borderRadius:'8px',fontSize:'12px',boxShadow:'0 2px 10px rgba(0,0,0,0.3)'}); banner.textContent='Preparing downloads…'; document.body.appendChild(banner);} 
+    const setText=(t)=>{ try{ banner.textContent=t; }catch{} };
+    for (let i=0;i<checks.length;i++){
+      const id = checks[i].getAttribute('data-id');
+      const label = checks[i].getAttribute('data-label')||id;
+      try{
+        setText(`Loading ${i+1}/${checks.length}: ${label}…`);
+        const { text } = await mqttDownloadCsv(id, (p)=>{ if(p&&p.phase==='chunk'&&p.percent!=null) setText(`Loading ${i+1}/${checks.length}: ${label} — ${p.percent}%`); });
+        const rec = parseCsvTextToRecording(text, id||'server.csv');
+        if (!rec || !rec.rows || rec.rows.length===0){ continue; }
+        try{ rec._hash = await computeSHA256Hex(text); }catch{}
+        if (shouldSkipDuplicate(rec)){
+          const proceed = confirm('This CSV matches an existing report. Import anyway?');
+          if (!proceed) continue;
+        }
+        // Optional name prompt per file; default to the label shown in the selection menu
+        try{
+          const suggested = label;
+          const newName = prompt('Name this report (optional):', suggested);
+          if (newName!=null && String(newName).trim()) rec.label = String(newName).trim();
+        }catch{}
+        allRecordings.push(rec);
+      }catch(e){ /* skip */ }
+    }
+    if (typeof saveRecordingsToStorage==='function') saveRecordingsToStorage();
+    generateReportsTabs();
+    try{ banner.style.transition='opacity 0.6s'; banner.style.opacity='0'; setTimeout(()=>{ try{ banner.remove(); }catch{} }, 700); }catch{}
+    close();
+  };
+  footer.appendChild(loadBtn);
+  body.appendChild(footer);
+
+  function renderTable(date){
+    table.innerHTML='';
+    // Unified header: checkbox + file + size + actions
+    table.appendChild(makeCell('', true));
+    table.appendChild(makeCell('File', true));
+    table.appendChild(makeCell('Size', true));
+    table.appendChild(makeCell('Rename', true));
+    table.appendChild(makeCell('Delete', true));
+    (byDate[date]||[]).forEach(it=>{
+      const label = it.label && it.label.trim()? it.label : (it.filename || it.id);
+      const cb = document.createElement('input'); cb.type='checkbox'; cb.setAttribute('data-id', it.id||it.filename); cb.setAttribute('data-label', label);
+      table.appendChild(cb);
+      // File cell: show name only (per-row Load removed)
+      const fileCell = document.createElement('div');
+      const nameSpan = document.createElement('span'); nameSpan.textContent = label; fileCell.appendChild(nameSpan);
+      table.appendChild(fileCell);
+      table.appendChild(makeCell((it.size_bytes!=null? (Math.round(it.size_bytes/1024)+' KB') : '-')));
+      const rn = document.createElement('button'); rn.className='small'; rn.textContent='Rename'; rn.onclick=async()=>{ await renameItem(it.id, label); await refresh(date); };
+      const del = document.createElement('button'); del.className='small'; del.textContent='Delete'; del.onclick=async()=>{ if(confirm('Delete this file from server?')){ await deleteItem(it.id); await refresh(date); } };
+      table.appendChild(rn); table.appendChild(del);
+    });
+  }
+  renderTable(dates[0]);
+  sel.onchange = ()=> renderTable(sel.value);
+
   dialog.appendChild(header); dialog.appendChild(body); overlay.appendChild(dialog); document.body.appendChild(overlay);
 
-  async function refresh(){ try{ overlay.remove(); }catch{} openServerManageModal(); }
+  async function refresh(dateSel){ try{ overlay.remove(); }catch{} openServerManageModal(); }
   function close(){ const ov=document.getElementById('serverManageOverlay'); if(ov&&ov.parentElement){ try{ ov.remove(); }catch{} } }
   function makeCell(text, header=false){ const d=document.createElement('div'); d.textContent=text; d.className= header? 'small' : ''; return d; }
-  async function deleteItem(id){ try{ await fetch(base+'/api/recordings/'+encodeURIComponent(id), { method:'DELETE' }); }catch{} }
+  async function deleteItem(id){ try{ await mqttOnceDelete(id); }catch{} }
   async function renameItem(id, current){
     const name = prompt('Enter new label for this file:', current || ''); if(!name || !name.trim()) return;
+    try{ await mqttOnceUpdate(id, name.trim()); }catch{ alert('Rename failed'); }
+  }
+  async function loadItem(it){
+    const id = it.id || it.filename;
+    if (!id) return;
+    // Show a small progress banner
+    const statusId = 'downloadStatusBanner';
+    let banner = document.getElementById(statusId);
+    if (!banner) { banner = document.createElement('div'); banner.id=statusId; Object.assign(banner.style,{position:'fixed',right:'12px',bottom:'12px',zIndex:'9999',background:'rgba(0,0,0,0.8)',color:'#fff',padding:'10px 12px',borderRadius:'8px',fontSize:'12px',boxShadow:'0 2px 10px rgba(0,0,0,0.3)'}); document.body.appendChild(banner);} 
+    const setText=(t)=>{ try{ banner.textContent=t; }catch{} };
     try{
-      const resp = await fetch(base+'/api/recordings/'+encodeURIComponent(id), { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ label: name.trim() }) });
-      if(!resp.ok){ alert('Rename failed'); }
-    }catch{ alert('Rename failed'); }
+      const disp = (it.label && it.label.trim()) ? it.label : (it.filename || it.id);
+      setText(`Loading: ${disp}…`);
+      const { text } = await mqttDownloadCsv(id, (p)=>{ if(p&&p.phase==='chunk'&&p.percent!=null) setText(`Loading: ${disp} — ${p.percent}%`); });
+      const rec = parseCsvTextToRecording(text, id||'server.csv');
+      if (!rec || !rec.rows || rec.rows.length===0) return;
+      try{ rec._hash = await computeSHA256Hex(text); }catch{}
+      if (shouldSkipDuplicate(rec)){
+        const proceed = confirm('This CSV matches an existing report. Import anyway?');
+        if (!proceed) return;
+      }
+      try{
+        // Default to display label used in the menu (disp)
+        const suggested = disp;
+        const newName = prompt('Name this report (optional):', suggested);
+        if (newName!=null && String(newName).trim()) rec.label = String(newName).trim();
+      }catch{}
+      allRecordings.push(rec);
+      if (typeof saveRecordingsToStorage==='function') saveRecordingsToStorage();
+      generateReportsTabs();
+    }catch(e){ /* ignore */ }
+    finally { try{ banner.style.transition='opacity 0.6s'; banner.style.opacity='0'; setTimeout(()=>{ try{ banner.remove(); }catch{} }, 700); }catch{} }
   }
 }
+
 
 // ---------- Single Athlete Mode ----------
 function getAthleteDisplayName(unitId){

@@ -60,7 +60,6 @@
         inputmode="text"
         aria-label="Site password"
         style="font-size:1em;padding:8px;width:100%;box-sizing:border-box;"
-        value="ripsbusk"
       />
       <script>
         // Extra: ensure input is focused on tap (iOS fix)
@@ -348,9 +347,9 @@
         <!-- Logs -->
         <div class="card grow"><div style="font-weight:700;margin-bottom:8px;">Logs</div><pre class="log" id="log"></pre></div>
 
-        <!-- Recording, Backend & Transfer (merged) -->
+        <!-- Recording & Transfer (CSV only) -->
         <div class="card half">
-          <div style="font-weight:700;margin-bottom:8px;">Recording, Backend & Transfer</div>
+          <div style="font-weight:700;margin-bottom:8px;">Recording & Transfer</div>
           <div class="grid" style="grid-template-columns:1fr;gap:12px;">
             <div>
               <div class="small" style="font-weight:700;margin-bottom:6px;">Recording</div>
@@ -361,25 +360,12 @@
               <div class="tiny" style="margin-top:6px;">Enable to prompt automatic CSV download after ending a recording.</div>
             </div>
             <div>
-              <div class="small" style="font-weight:700;margin-bottom:6px;">Backend Server</div>
-              <label>Base URL</label>
-              <input id="backendBaseUrl" type="text" placeholder="http://localhost:8000"/>
-              <div class="btns" style="margin-top:8px;">
-                <button id="saveBackendUrl">Save</button>
-              </div>
-              <div id="backendStatus" class="tiny"></div>
-            </div>
-            <div>
               <div class="small" style="font-weight:700;margin-bottom:6px;">Import & Transfer</div>
               <label style="display:flex;align-items:center;gap:8px;">
                 <input type="checkbox" id="skipDupImport"/>
-                Skip duplicates when importing (CSV/server)
+                Skip duplicates when importing CSV
               </label>
-              <label style="display:flex;align-items:center;gap:8px;">
-                <input type="checkbox" id="verifyTransfer"/>
-                Verify CSV integrity during transfer
-              </label>
-              <div class="tiny">Verification compares a SHA-256 hash from the server to the downloaded data, and checks uploads by comparing the server-returned hash to your local hash.</div>
+              <!-- Server backup and verification controls removed -->
             </div>
           </div>
         </div>
@@ -1098,14 +1084,7 @@ document.addEventListener('DOMContentLoaded', () => {
       try{ localStorage.setItem('skipDupImport', skipCb.checked ? 'true' : 'false'); }catch{}
     });
   }
-  // Transfer verification setting
-  const verCb = document.getElementById('verifyTransfer');
-  if (verCb){
-    try{ const v = localStorage.getItem('verifyTransfer'); verCb.checked = (v===null)? true : (v==='true'); }catch{}
-    verCb.addEventListener('change', ()=>{
-      try{ localStorage.setItem('verifyTransfer', verCb.checked ? 'true' : 'false'); }catch{}
-    });
-  }
+  // Transfer verification setting removed with server backup feature
 
   // Buttons scale (range + number) inside Scaling
   (function(){
@@ -1126,23 +1105,7 @@ document.addEventListener('DOMContentLoaded', () => {
     num.addEventListener('change', ()=>{ try{ localStorage.setItem('btnScale', String(parseFloat(num.value||'1'))); }catch{} });
   })();
 
-  // Backend server settings init
-  const bUrlInput = document.getElementById('backendBaseUrl');
-  const bSaveBtn = document.getElementById('saveBackendUrl');
-  const bStat = document.getElementById('backendStatus');
-  if (bUrlInput) {
-    const cur = localStorage.getItem('backend_base_url') || 'http://localhost:8000';
-    bUrlInput.value = cur;
-    if (bStat) bStat.textContent = `Using: ${cur}`;
-  }
-  if (bSaveBtn && bUrlInput) {
-    bSaveBtn.addEventListener('click', () => {
-      const v = (bUrlInput.value || '').trim();
-      if (!v) return;
-      try { localStorage.setItem('backend_base_url', v); } catch {}
-      if (bStat) bStat.textContent = `Saved. Using: ${v}`;
-    });
-  }
+  // Backup server (MQTT) settings removed
 });
 
 // Patch: also check topbar width after unlock (when #app is shown)
