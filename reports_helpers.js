@@ -1471,6 +1471,9 @@ async function openServerManageModal(){
   const byDate = {};
   items.forEach(it=>{ const d=itemDateStr(it); if(!byDate[d]) byDate[d]=[]; byDate[d].push(it); });
   const dates = Object.keys(byDate).sort();
+  // Determine default (most recent) date; prefer valid YYYY-MM-DD entries
+  const validDates = dates.filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d));
+  const defaultDate = validDates.length ? [...validDates].sort()[validDates.length-1] : dates[dates.length-1];
 
   const overlay = document.createElement('div'); overlay.id='serverManageOverlay'; overlay.className='modal-overlay'; overlay.addEventListener('click', e=>{ if(e.target===overlay) close(); });
   const dialog = document.createElement('div'); dialog.className='modal-dialog'; dialog.style.maxWidth='900px'; dialog.style.width='90%';
@@ -1483,7 +1486,10 @@ async function openServerManageModal(){
   // Date selector
   const controls = document.createElement('div'); controls.style.display='flex'; controls.style.gap='8px'; controls.style.alignItems='center'; controls.style.marginBottom='10px';
   const lab = document.createElement('label'); lab.className='small'; lab.textContent='Select date:'; controls.appendChild(lab);
-  const sel = document.createElement('select'); dates.forEach(d=>{ const o=document.createElement('option'); o.value=d; o.textContent=d; sel.appendChild(o); }); controls.appendChild(sel);
+  const sel = document.createElement('select'); dates.forEach(d=>{ const o=document.createElement('option'); o.value=d; o.textContent=d; sel.appendChild(o); });
+  // Default selection to the most recent date
+  if (defaultDate) sel.value = defaultDate;
+  controls.appendChild(sel);
   body.appendChild(controls);
 
   // Container for table
@@ -1552,7 +1558,8 @@ async function openServerManageModal(){
       table.appendChild(rn); table.appendChild(del);
     });
   }
-  renderTable(dates[0]);
+  // Render the most recent date by default
+  renderTable(defaultDate);
   sel.onchange = ()=> renderTable(sel.value);
 
   dialog.appendChild(header); dialog.appendChild(body); overlay.appendChild(dialog); document.body.appendChild(overlay);
