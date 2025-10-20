@@ -588,7 +588,7 @@ function showReportFor(recId) {
   <div style="font-weight:700;margin-bottom:8px;"><span class="unitTag" style="background:${colorMap[id]}">${window.unitSettings[id]?.name || id}</span></div>
       <div class="grid">
         <div><div class="small">Avg Heel (°)</div><div class="num">${rollStats.mean!==null ? rollStats.mean.toFixed(1)+' ±'+rollStats.sd.toFixed(1)+'°' : '–'}</div></div>
-        <div><div class="small">Avg Trim (°)</div><div class="num">${pitchStats.mean!==null ? pitchStats.mean.toFixed(1)+' ±'+pitchStats.sd.toFixed(1)+'°' : '–'}</div></div>
+  <div><div class="small">Avg Pitch (°)</div><div class="num">${pitchStats.mean!==null ? pitchStats.mean.toFixed(1)+' ±'+pitchStats.sd.toFixed(1)+'°' : '–'}</div></div>
         <div><div class="small">Avg SOG (kt)</div><div class="num">${sogStats.mean!==null ? sogStats.mean.toFixed(1)+' ±'+sogStats.sd.toFixed(1) : '–'}</div></div>
         <div><div class="small">Max SOG (kt)</div><div class="num">${sogStats.max!==null ? sogStats.max.toFixed(1) : '–'}</div></div>
         <div><div class="small">TWA (°)</div><div class="num">${twaStats.mean!==null ? twaStats.mean.toFixed(1)+' ±'+twaStats.sd.toFixed(1)+'°' : '–'}</div></div>
@@ -1833,7 +1833,7 @@ function renderSingleAthleteCharts(athleteId, recIds){
       <div style="font-weight:700;margin-bottom:8px;"><span class="unitTag" style="background:${c}">${title}</span></div>
       <div class="grid">
         <div><div class="small">Avg Heel (°)</div><div class="num">${rollStats.mean!==null ? rollStats.mean.toFixed(1)+' ±'+rollStats.sd.toFixed(1)+'°' : '–'}</div></div>
-        <div><div class="small">Avg Trim (°)</div><div class="num">${pitchStats.mean!==null ? pitchStats.mean.toFixed(1)+' ±'+pitchStats.sd.toFixed(1)+'°' : '–'}</div></div>
+  <div><div class="small">Avg Pitch (°)</div><div class="num">${pitchStats.mean!==null ? pitchStats.mean.toFixed(1)+' ±'+pitchStats.sd.toFixed(1)+'°' : '–'}</div></div>
         <div><div class="small">Avg SOG (kt)</div><div class="num">${sogStats.mean!==null ? sogStats.mean.toFixed(1)+' ±'+sogStats.sd.toFixed(1) : '–'}</div></div>
         <div><div class="small">Max SOG (kt)</div><div class="num">${sogStats.max!==null ? sogStats.max.toFixed(1) : '–'}</div></div>
         <div><div class="small">TWA (°)</div><div class="num">${twaStats.mean!==null ? twaStats.mean.toFixed(1)+' ±'+(twaStats.sd??0).toFixed(1)+'°' : '–'}</div></div>

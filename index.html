@@ -109,13 +109,13 @@
 
       <div class="row">
           <div class="card half" style="display:none;"> <!-- HIDDEN -->
-            <div class="dens-head" style="font-weight:700;">Trim (°) — per athlete</div>
+            <div class="dens-head" style="font-weight:700;">Pitch (°) — per athlete</div>
             <div class="plot"><canvas id="dist-pitch"></canvas></div>
           </div>
       </div>
       <div class="row">
         <div class="card half" style="display:none;"> <!-- HIDDEN -->
-          <div class="dens-head" style="font-weight:700;">Frequency (Trim, Hz) — per athlete</div>
+          <div class="dens-head" style="font-weight:700;">Frequency (Pitch, Hz) — per athlete</div>
           <div class="plot"><canvas id="dist-freq-pitch"></canvas></div>
         </div>
       </div>
@@ -229,7 +229,7 @@
               </div>
             </div>
           </div>
-          <div class="tiny" style="margin-top:6px;">Tip: Overall Page scale zooms the entire interface; Now Numbers Scale only affects Heel, Trim, SOG, VMG; Buttons Scale grows click targets and button text.</div>
+          <div class="tiny" style="margin-top:6px;">Tip: Overall Page scale zooms the entire interface; Now Numbers Scale only affects Heel, Pitch, SOG, VMG; Buttons Scale grows click targets and button text.</div>
         </div>
 
         <!-- Now Stats Visibility -->
@@ -237,7 +237,7 @@
           <div style="font-weight:700;margin-bottom:8px;">Now Stats Visibility</div>
           <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;align-items:center;">
             <label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="nsHeel" checked/>Heel</label>
-            <label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="nsTrim" checked/>Trim</label>
+            <label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="nsTrim" checked/>Pitch</label>
             <label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="nsSog" checked/>SOG</label>
             <label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="nsVmg" checked/>VMG</label>
             <label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="nsHdg" checked/>Heading</label>
@@ -316,7 +316,7 @@
 
             <!-- KDE smoothing controls -->
             <div style="grid-column:1/-1;">
-              <label>Distribution smoothing — Heel/Trim (× bandwidth)</label>
+              <label>Distribution smoothing — Heel/Pitch (× bandwidth)</label>
               <div class="range-row">
                 <input id="kdeFactorAngRange" type="range" min="0.1" max="1" step="0.1" value="0.3"/>
                 <input id="kdeFactorAng" type="number" min="0.1" max="1" step="0.1" value="0.3" style="width:90px"/>
@@ -467,7 +467,7 @@ const nowUnits=$('nowUnits'), unitsList=$('unitsList');
 
 // Now stats visibility state and helpers
 const NOW_VIS_KEYS = {
-  Heel: 'nsHeel', Trim: 'nsTrim', SOG: 'nsSog', VMG: 'nsVmg', Heading: 'nsHdg', TWA: 'nsTwa', Freq: 'nsFreq', Dstart: 'nsDstart', Dtop: 'nsDtop', Latlon: 'nsLatlon'
+  Heel: 'nsHeel', Pitch: 'nsTrim', SOG: 'nsSog', VMG: 'nsVmg', Heading: 'nsHdg', TWA: 'nsTwa', Freq: 'nsFreq', Dstart: 'nsDstart', Dtop: 'nsDtop', Latlon: 'nsLatlon'
 };
 function getNowVisibility(){
   try{
@@ -582,7 +582,7 @@ function ensureUnit(unitId){
     </div>
   <div class="grid" style="grid-template-columns:1fr 1fr">
   <div><div class="small">Heel</div><div class="num" id="now-roll-${unitId}">–</div></div>
-  <div><div class="small">Trim</div><div class="num" id="now-pitch-${unitId}">–</div></div>
+  <div><div class="small">Pitch</div><div class="num" id="now-pitch-${unitId}">–</div></div>
       <div><div class="small">SOG (kt)</div><div class="num" id="now-sog-${unitId}">–</div></div>
       <div><div class="small">VMG (kt)</div><div class="num" id="now-vmg-${unitId}">–</div></div>
       <div><div class="small">Heading (°)</div><div class="num" id="now-hdg-${unitId}">–</div></div>
@@ -623,12 +623,12 @@ setInterval(() => {
     <div class="grid">
       <div><div class="small">Mean Heel</div><div class="num" id="st-roll-mean-${unitId}">–</div></div>
       <div><div class="small">Std Heel</div><div class="num" id="st-roll-std-${unitId}">–</div></div>
-      <div><div class="small">Mean Trim</div><div class="num" id="st-pitch-mean-${unitId}">–</div></div>
-      <div><div class="small">Std Trim</div><div class="num" id="st-pitch-std-${unitId}">–</div></div>
+  <div><div class="small">Mean Pitch</div><div class="num" id="st-pitch-mean-${unitId}">–</div></div>
+  <div><div class="small">Std Pitch</div><div class="num" id="st-pitch-std-${unitId}">–</div></div>
       <div><div class="small">Peaks Heel</div><div class="num" id="st-roll-pk-${unitId}">0</div></div>
-      <div><div class="small">Peaks Trim</div><div class="num" id="st-pitch-pk-${unitId}">0</div></div>
+  <div><div class="small">Peaks Pitch</div><div class="num" id="st-pitch-pk-${unitId}">0</div></div>
       <div><div class="small">Freq Heel (Hz)</div><div class="num" id="st-roll-hz-${unitId}">–</div></div>
-      <div><div class="small">Freq Trim (Hz)</div><div class="num" id="st-pitch-hz-${unitId}">–</div></div>
+  <div><div class="small">Freq Pitch (Hz)</div><div class="num" id="st-pitch-hz-${unitId}">–</div></div>
       <div style="grid-column:1/-1"><div class="small">Mean SOG (kt)</div><div class="num" id="st-sog-mean-${unitId}">–</div></div>
     </div>`;
 
@@ -1334,13 +1334,13 @@ function computeRecordingStats(rows) {
   html += `<div class="grid">`;
   html += `<div><div class="small">Mean Heel</div><div class="num">${meanStdRoll.mean.toFixed(2)}</div></div>`;
   html += `<div><div class="small">Std Heel</div><div class="num">${meanStdRoll.std.toFixed(2)}</div></div>`;
-  html += `<div><div class="small">Mean Trim</div><div class="num">${meanStdPitch.mean.toFixed(2)}</div></div>`;
-  html += `<div><div class="small">Std Trim</div><div class="num">${meanStdPitch.std.toFixed(2)}</div></div>`;
+  html += `<div><div class="small">Mean Pitch</div><div class="num">${meanStdPitch.mean.toFixed(2)}</div></div>`;
+  html += `<div><div class="small">Std Pitch</div><div class="num">${meanStdPitch.std.toFixed(2)}</div></div>`;
   html += `<div><div class="small">TWA (°)</div><div class="num">${twaDisplay}</div></div>`;
   html += `<div><div class="small">Peaks Heel</div><div class="num">${rPeaks.length}</div></div>`;
-  html += `<div><div class="small">Peaks Trim</div><div class="num">${pPeaks.length}</div></div>`;
+  html += `<div><div class="small">Peaks Pitch</div><div class="num">${pPeaks.length}</div></div>`;
   html += `<div><div class="small">Freq Heel (Hz)</div><div class="num">${isFinite(fR) ? fR.toFixed(2) : '–'}</div></div>`;
-  html += `<div><div class="small">Freq Trim (Hz)</div><div class="num">${isFinite(fP) ? fP.toFixed(2) : '–'}</div></div>`;
+  html += `<div><div class="small">Freq Pitch (Hz)</div><div class="num">${isFinite(fP) ? fP.toFixed(2) : '–'}</div></div>`;
     html += `</div></div>`;
   });
   html += '</div>';
@@ -1405,7 +1405,7 @@ document.getElementById('btnUnlock').addEventListener('click',async ()=>{
   }
   if (pitchEl) {
     const pctx = pitchEl.getContext('2d');
-    distCharts.pitch= makeDensityChartMulti(pctx,'Trim',{min:DEG_RANGE.min,max:DEG_RANGE.max,step:DEG_RANGE.step,type:'linear'});
+    distCharts.pitch= makeDensityChartMulti(pctx,'Pitch',{min:DEG_RANGE.min,max:DEG_RANGE.max,step:DEG_RANGE.step,type:'linear'});
   }
   if (frRollEl) {
     const frctx = frRollEl.getContext('2d');
@@ -1422,7 +1422,7 @@ document.getElementById('btnUnlock').addEventListener('click',async ()=>{
   }
   if (frPitchEl) {
     const fpctx = frPitchEl.getContext('2d');
-    distCharts.freqPitch = makeDensityChartMulti(fpctx,'Freq (Trim)',  {min:FREQ_RANGE.min,max:FREQ_RANGE.max,step:FREQ_RANGE.step,type:'logarithmic'});
+    distCharts.freqPitch = makeDensityChartMulti(fpctx,'Freq (Pitch)',  {min:FREQ_RANGE.min,max:FREQ_RANGE.max,step:FREQ_RANGE.step,type:'logarithmic'});
   }
   distCharts.xsDeg=null; distCharts.xsHz=null;
     })();
@@ -1723,9 +1723,9 @@ if (btnClearAth) btnClearAth.addEventListener('click',()=>{
       try {
         if (typeof chartTS !== 'undefined' && chartTS) {
           if (u.idxRoll != null && chartTS.data.datasets[u.idxRoll]) chartTS.data.datasets[u.idxRoll].label = `${id} heel`;
-          if (u.idxPitch != null && chartTS.data.datasets[u.idxPitch]) chartTS.data.datasets[u.idxPitch].label = `${id} trim`;
+          if (u.idxPitch != null && chartTS.data.datasets[u.idxPitch]) chartTS.data.datasets[u.idxPitch].label = `${id} pitch`;
           if (u.idxRollPk != null && chartTS.data.datasets[u.idxRollPk]) chartTS.data.datasets[u.idxRollPk].label = `${id} heel peaks`;
-          if (u.idxPitchPk != null && chartTS.data.datasets[u.idxPitchPk]) chartTS.data.datasets[u.idxPitchPk].label = `${id} trim peaks`;
+          if (u.idxPitchPk != null && chartTS.data.datasets[u.idxPitchPk]) chartTS.data.datasets[u.idxPitchPk].label = `${id} pitch peaks`;
         }
         if (typeof chartSOG !== 'undefined' && chartSOG) {
           if (u.idxSOG != null && chartSOG.data.datasets[u.idxSOG]) chartSOG.data.datasets[u.idxSOG].label = `${id} SOG`;
