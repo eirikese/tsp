@@ -657,7 +657,7 @@ function showReportFor(recId) {
       </div>
       ${hasSogData ? `
       <div class="card grow" style="padding:24px 20px;display:flex;flex-direction:column;gap:12px;min-height:${plotH+60}px;">
-        <div style='font-weight:700;margin-bottom:4px;text-align:center;'>SOG Histogram (kt)</div>
+        <div style='font-weight:700;margin-bottom:4px;text-align:center;'>SOG Distribution (kt)</div>
         <div class="plot"><canvas id="report-hist-sog" width="${plotW}" height="${plotH}" style="width:100%;height:100%;max-width:100%;max-height:100%;"></canvas></div>
       </div>
       ` : ''}
@@ -1854,7 +1854,7 @@ function renderSingleAthleteCharts(athleteId, recIds){
         <div class="plot"><canvas id="sa-kde-freq-roll" width="${plotW}" height="${plotH}" style="width:100%;height:100%;max-width:100%;max-height:100%;"></canvas></div>
       </div>
       <div class="card grow" style="padding:24px 20px;display:flex;flex-direction:column;gap:12px;min-height:${plotH+60}px;">
-        <div style='font-weight:700;margin-bottom:4px;text-align:center;'>SOG Histogram (kt) — ${getAthleteDisplayName(athleteId)}</div>
+        <div style='font-weight:700;margin-bottom:4px;text-align:center;'>SOG Distribution (kt) — ${getAthleteDisplayName(athleteId)}</div>
         <div class="plot"><canvas id="sa-hist-sog" width="${plotW}" height="${plotH}" style="width:100%;height:100%;max-width:100%;max-height:100%;"></canvas></div>
       </div>
       <div class="card grow" style="padding:24px 20px;display:flex;flex-direction:column;gap:12px;min-height:${plotH+60}px;">
