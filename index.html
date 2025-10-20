@@ -197,7 +197,7 @@
               <div class="small" style="font-weight:700;margin-bottom:6px;">Units Visibility</div>
               <div id="unitsList" class="grid" style="grid-template-columns:1fr;gap:8px"></div>
               <div class="btns" style="margin-top:12px;">
-                <button id="btnClear">Clear Data</button>
+                <button id="btnClearAthletes">Clear Data</button>
               </div>
             </div>
           </div>
@@ -274,7 +274,7 @@
           <div class="btns">
             <button id="btnConnect">Connect</button>
             <button id="btnDisconnect">Disconnect</button>
-            <button id="btnClear">Clear Data</button>
+            <button id="btnClearData">Clear Data</button>
           </div>
         </div>
 
@@ -1675,7 +1675,9 @@ function connect(){
 function disconnect(){ if(client){try{client.end(true);}catch(e){} client=null;} setStatus('disconnected',false); log('disconnected'); }
 document.getElementById('btnConnect').addEventListener('click',connect);
 document.getElementById('btnDisconnect').addEventListener('click',disconnect);
-document.getElementById('btnClear').addEventListener('click',()=>{
+// Clear live data (Connection pane button)
+const btnClearData = document.getElementById('btnClearData');
+if (btnClearData) btnClearData.addEventListener('click',()=>{
   for(const id of Object.keys(units)){
     const u=units[id];
     u.times.length=0;u.roll.length=0;u.pitch.length=0;
@@ -1694,6 +1696,65 @@ document.getElementById('btnClear').addEventListener('click',()=>{
   if(distCharts.freq){ for(const ds of distCharts.freq.data.datasets){ ds.data.length=0; ds.hidden=true; } distCharts.freq.update('none'); }
   globalT0=null; chartTS.update('none'); chartSOG.update('none'); log('cleared');
   firstMapFixDone=false; if(mapInited) map.setView([0,0],2);
+});
+
+// Clear cached athlete names/colors (Athletes pane button)
+const btnClearAth = document.getElementById('btnClearAthletes');
+if (btnClearAth) btnClearAth.addEventListener('click',()=>{
+  try {
+    // Remove saved unit configs
+    if (window.UNIT_CONFIG_KEY) localStorage.removeItem(window.UNIT_CONFIG_KEY);
+    else localStorage.removeItem('unitColors');
+  } catch {}
+  // Reset in-memory custom names/colors to defaults
+  if (window.units) {
+    const cfg = {};
+    let idx = 0;
+    for (const id of Object.keys(units)){
+      const u = units[id];
+      // Default color from palette/base order
+      const base = (window.COLORS_BASE && window.COLORS_BASE.length) ? window.COLORS_BASE[idx % window.COLORS_BASE.length] : (u.baseColor || '#ff9f1c');
+      u.baseColor = base;
+      u.customName = id;
+      // Update visible labels immediately
+      const tagNow = document.getElementById(`tag-${id}`); if (tagNow) tagNow.textContent = id;
+      const tagSet = document.getElementById(`tag-${id}-settings`); if (tagSet) tagSet.textContent = id;
+      // Update chart dataset labels to default names
+      try {
+        if (typeof chartTS !== 'undefined' && chartTS) {
+          if (u.idxRoll != null && chartTS.data.datasets[u.idxRoll]) chartTS.data.datasets[u.idxRoll].label = `${id} heel`;
+          if (u.idxPitch != null && chartTS.data.datasets[u.idxPitch]) chartTS.data.datasets[u.idxPitch].label = `${id} trim`;
+          if (u.idxRollPk != null && chartTS.data.datasets[u.idxRollPk]) chartTS.data.datasets[u.idxRollPk].label = `${id} heel peaks`;
+          if (u.idxPitchPk != null && chartTS.data.datasets[u.idxPitchPk]) chartTS.data.datasets[u.idxPitchPk].label = `${id} trim peaks`;
+        }
+        if (typeof chartSOG !== 'undefined' && chartSOG) {
+          if (u.idxSOG != null && chartSOG.data.datasets[u.idxSOG]) chartSOG.data.datasets[u.idxSOG].label = `${id} SOG`;
+          if (u.idxVMG != null && chartSOG.data.datasets[u.idxVMG]) chartSOG.data.datasets[u.idxVMG].label = `${id} VMG`;
+        }
+        if (distCharts && distCharts.roll) { const rI = distIdx.roll[id]; if (rI != null) distCharts.roll.data.datasets[rI].label = id; }
+        if (distCharts && distCharts.pitch){ const pI = distIdx.pitch[id]; if (pI != null) distCharts.pitch.data.datasets[pI].label = id; }
+        if (distCharts && distCharts.freq) { const fI = distIdx.freq[id]; if (fI != null) distCharts.freq.data.datasets[fI].label = id; }
+      } catch {}
+      idx++;
+    }
+    // Refresh styles and chart labels
+    if (typeof refreshUnitStylesForTheme === 'function') refreshUnitStylesForTheme();
+    if (typeof applyConfigOrderToTiles === 'function') applyConfigOrderToTiles();
+    if (typeof chartTS !== 'undefined' && chartTS) chartTS.update('none');
+    if (typeof chartSOG !== 'undefined' && chartSOG) chartSOG.update('none');
+  }
+  // Rebuild the Athletes Configuration UI
+  try {
+    const el = document.getElementById('unitsConfig');
+    if (el) el.innerHTML = '';
+    if (window.discoveredOrder && Array.isArray(window.discoveredOrder)) {
+      window.discoveredOrder.forEach(id => { if (typeof updateUnitConfigRow === 'function') updateUnitConfigRow(id); });
+    } else if (window.units) {
+      Object.keys(window.units).forEach(id => { if (typeof updateUnitConfigRow === 'function') updateUnitConfigRow(id); });
+    }
+  } catch {}
+  const status = document.getElementById('configStatus');
+  if (status) { status.textContent = 'Cleared saved athlete names and colors'; status.style.color = '#ff6b6b'; setTimeout(()=>status.textContent='',3000); }
 });
 
 // ---------- GNSS guards + geo ----------

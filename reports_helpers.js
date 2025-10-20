@@ -431,12 +431,56 @@ function showReportFor(recId) {
       });
     }
   }catch{}
-  // Get unit colors from localStorage
+
+  // Sync report athletes into Settings → Athletes
+  try{
+    // Ensure 'discoveredOrder' includes any report-only athletes, for stable default color assignment
+    if (!Array.isArray(window.discoveredOrder)) window.discoveredOrder = [];
+    const set = new Set(window.discoveredOrder);
+    unitIds.forEach(id => { if (!set.has(id)) { window.discoveredOrder.push(id); set.add(id); } });
+    // Create missing configuration rows so they appear in Athlete Configuration
+    if (typeof window.updateUnitConfigRow === 'function') {
+      unitIds.forEach(id => {
+        try{
+          const container = document.getElementById('unitsConfig');
+          const exists = container && container.querySelector(`.unit-config-row[data-unit="${id}"]`);
+          if (!exists) window.updateUnitConfigRow(id);
+        }catch{}
+      });
+    }
+  }catch{}
+  // Get unit colors from localStorage; assign distinct fallbacks if none stored
   window.unitSettings = JSON.parse(localStorage.getItem('unitColors') || '{}');
   const colorMap = {};
-  unitIds.forEach(id => { 
+  // Build a palette from COLORS_BASE plus COLORS_PALETTE values, fallback to a standard set
+  const palette = (function(){
+    const merged = [];
+    try{
+      const pushU = (c)=>{ if (c && !merged.includes(c)) merged.push(c); };
+      if (Array.isArray(window.COLORS_BASE)) window.COLORS_BASE.forEach(pushU);
+      if (Array.isArray(window.COLORS_PALETTE)) window.COLORS_PALETTE.forEach(p=> pushU(p && p.value));
+    }catch{}
+    if (merged.length === 0) return ['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b','#e377c2','#7f7f7f'];
+    return merged;
+  })();
+  const used = new Set();
+  // Mark any stored colors as used
+  unitIds.forEach(id => { const c = (window.unitSettings[id]||{}).color; if (c) used.add(c); });
+  let cursor = 0;
+  unitIds.forEach((id) => {
     const storedUnit = window.unitSettings[id] || {};
-    colorMap[id] = storedUnit.color || COLORS_BASE[0];
+    if (storedUnit.color) {
+      colorMap[id] = storedUnit.color;
+    } else {
+      // Pick next not-yet-used color from palette
+      let chosen = null;
+      for (let i=0; i<palette.length; i++){
+        const cand = palette[(cursor + i) % palette.length];
+        if (!used.has(cand)) { chosen = cand; cursor = (cursor + i + 1) % palette.length; break; }
+      }
+      if (!chosen) { chosen = palette[cursor % palette.length]; cursor = (cursor + 1) % palette.length; }
+      colorMap[id] = chosen; used.add(chosen);
+    }
   });
   // Show/hide state (persisted per report in-memory)
   if (!rec._athleteShow) rec._athleteShow = {};
